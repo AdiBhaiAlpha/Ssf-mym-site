@@ -1,0 +1,8 @@
+{
+  "name": "সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ",
+  "description": "সমাজতান্ত্রিক ছাত্র ফ্রন্ট ময়মনসিংহ জেলা শাখা ডিজিটাল সদর দপ্তর, নিউজ পোর্টাল, নোটিশ বোর্ড ও প্রকাশনা আর্কাইভ",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
