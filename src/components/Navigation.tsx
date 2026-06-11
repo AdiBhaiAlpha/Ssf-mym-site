@@ -54,6 +54,7 @@ export default function Navigation({
   const [regEmail, setRegEmail] = useState('');
   const [regMobile, setRegMobile] = useState('');
   const [regInstitution, setRegInstitution] = useState('');
+  const [regPassword, setRegPassword] = useState('');
   const [regType, setRegType] = useState<'member' | 'volunteer'>('member');
   const [regSuccess, setRegSuccess] = useState('');
   const [regLoading, setRegLoading] = useState(false);
@@ -69,6 +70,7 @@ export default function Navigation({
     setRegEmail('');
     setRegMobile('');
     setRegInstitution('');
+    setRegPassword('');
   };
 
   const userRole = invitations?.find(
@@ -189,6 +191,12 @@ export default function Navigation({
       return;
     }
 
+    if (foundMember.password && foundMember.password !== loginPassword) {
+      setLoginError('দুঃখিত, আপনার পাসওয়ার্ডটি সঠিক নয়। অনুগ্রহ করে পুনরায় সঠিক পাসওয়ার্ড দিন।');
+      logMemberLoginDirect(foundMember.email, 'failed', 'ভুল পাসওয়ার্ড দিয়ে লগইন চেষ্টা করা হয়েছে।');
+      return;
+    }
+
     if (foundMember.status === 'pending') {
       setLoginError('আপনার সদস্যপদ আবেদনটি বর্তমানে মূল্যায়নাধীন (Pending) রয়েছে। জেলা দপ্তর অনুমোদনকারী প্যানেল ভেরিফাই করলে লগইন সম্ভব।');
       logMemberLoginDirect(foundMember.email, 'failed', 'আবেদনকারী লগইন চেষ্টা করেছেন কিন্তু তাঁর পাসওয়ার্ড/মেইল এখনো অনুমোদিত (Pending) নয়।');
@@ -266,9 +274,15 @@ export default function Navigation({
     const emailVal = regEmail.trim().toLowerCase();
     const mobileVal = regMobile.trim();
     const instVal = regInstitution.trim();
+    const passVal = regPassword.trim();
 
-    if (!nameVal || !emailVal || !mobileVal || !instVal) {
-      setLoginError('দয়া করে প্রতিটি প্রয়োজনীয় তথ্য দিয়ে ফরমটি পূর্ণাঙ্গভাবে পূরণ করুন।');
+    if (!nameVal || !emailVal || !mobileVal || !instVal || !passVal) {
+      setLoginError('দয়া করে প্রতিটি প্রয়োজনীয় তথ্য এবং অবশ্যই একটি পাসওয়ার্ড নিশ্চিত করুন।');
+      return;
+    }
+
+    if (passVal.length < 4) {
+      setLoginError('নিরাপত্তার স্বার্থে পাসওয়ার্ডটি কমপক্ষে ৪ অক্ষরের হতে হবে।');
       return;
     }
 
@@ -282,6 +296,7 @@ export default function Navigation({
           name: nameVal,
           mobile: mobileVal,
           email: emailVal,
+          password: passVal,
           institution: instVal,
           department: '',
           academicYear: '',
@@ -607,7 +622,7 @@ export default function Navigation({
                           <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-900 pb-2 mb-3">
                             <h4 className="font-bold flex items-center gap-1.5 text-zinc-900 dark:text-white">
                               <Bell className="w-4 h-4 text-rose-600" />
-                              <span>এডমিন নিমন্ত্রণ ({pendingInvitations.length})</span>
+                              <span>নোটিফিকেশন ({pendingInvitations.length})</span>
                             </h4>
                           </div>
 
@@ -1080,6 +1095,20 @@ export default function Navigation({
                         </select>
                       </div>
 
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                          পাসওয়ার্ড সেট করুন (Create Password) *
+                        </label>
+                        <input
+                          type="password"
+                          required
+                          placeholder="কমপক্ষে ৪ অক্ষরের পাসওয়ার্ড দিন"
+                          value={regPassword}
+                          onChange={(e) => setRegPassword(e.target.value)}
+                          className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-800 bg-transparent text-zinc-900 dark:text-white rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500"
+                        />
+                      </div>
+
                       <button
                         type="submit"
                         disabled={regLoading}
@@ -1148,7 +1177,7 @@ export default function Navigation({
               {/* Quick Admin Override credentials block */}
               <div className="mt-6 border-t border-zinc-100 dark:border-zinc-900 pt-4 text-center select-none font-sans">
                 <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-2 leading-relaxed">
-                  পরীক্ষা করার জন্য সরাসরি সুপার এডমিন (Chitron Bhattacharjee) হিসেবে সহজে প্রবেশ করতে নিচে ক্লিক করুন:
+                  পরীক্ষা করার জন্য সরাসরি সুপার এডমিন হিসেবে সহজে প্রবেশ করতে নিচে ক্লিক করুন:
                 </p>
                 <button
                   type="button"

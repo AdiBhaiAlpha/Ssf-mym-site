@@ -56,7 +56,7 @@ export default function PortalAuth({ memberships, onLogin }: PortalAuthProps) {
       if (cleanEmail === 'chitronbhattacharjee@gmail.com') {
         onLogin(cleanEmail);
         setLoading(false);
-        logMemberLoginDirect(cleanEmail, 'success', 'সদস্য পোর্টাল ট্যাব থেকে সরাসরি সুপার এডমিন (চিত্তাভ ভট্টাচার্য) সেশন চালু করা হয়েছে।');
+        logMemberLoginDirect(cleanEmail, 'success', 'সদস্য পোর্টাল ট্যাব থেকে সরাসরি সুপার এডমিন সেশন চালু করা হয়েছে।');
         return;
       }
 
@@ -66,6 +66,13 @@ export default function PortalAuth({ memberships, onLogin }: PortalAuthProps) {
         setErrorMsg('দুঃখিত, এই ইমেইলের বিপরীতে আমাদের ডাটাবেজে কোনো সদস্যপদ পাওয়া যায়নি। সঠিক তথ্য দিন অথবা জেলা দপ্তরে নতুন আবেদন পেশ করুন।');
         setLoading(false);
         logMemberLoginDirect(cleanEmail, 'failed', 'সদস্য পোর্টাল থেকে অনিবন্ধিত ইমেইল দিয়ে ব্যর্থ লগইন চেষ্টা।');
+        return;
+      }
+
+      if (matched.password && matched.password !== password) {
+        setErrorMsg('দুঃখিত, আপনার পাসওয়ার্ডটি সঠিক নয়। অনুগ্রহ করে পুনরায় সঠিক পাসওয়ার্ড দিন।');
+        setLoading(false);
+        logMemberLoginDirect(matched.email, 'failed', 'ভুল পাসওয়ার্ড দিয়ে লগইন চেষ্টা করা হয়েছে।');
         return;
       }
 

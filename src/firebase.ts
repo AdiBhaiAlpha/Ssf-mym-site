@@ -3,19 +3,10 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore, doc, getDoc, getDocs, setDoc, deleteDoc, collection } from 'firebase/firestore';
 import { getInitialDBState, AppDatabase } from './server/db-initial';
 
-const firebaseConfig = {
-  projectId: "western-correlate-nkm1r",
-  appId: "1:677093502751:web:c6c64c27951359be0bca2a",
-  apiKey: "AIzaSyBFB33BpKa0x5AdAIV9SSv-1luyw-epLXI",
-  authDomain: "western-correlate-nkm1r.firebaseapp.com",
-  firestoreDatabaseId: "ai-studio-9d6b743e-03ba-4396-bc8a-564d428f4c81",
-  storageBucket: "western-correlate-nkm1r.firebasestorage.app",
-  messagingSenderId: "677093502751",
-  measurementId: ""
-};
+import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, "ai-studio-9d6b743e-03ba-4396-bc8a-564d428f4c81");
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 
 export enum OperationType {

@@ -32,6 +32,39 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 } // 50MB
 });
 
+// Sanitization function for folder name
+const sanitizeFolderName = (name: string) => {
+  if (!name) return 'default_user';
+  return name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '').trim().substring(0, 35) || 'default_user';
+};
+
+const profileStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const userNameParam = req.query.userName as string || req.body.userName as string || 'default_user';
+    const folderName = sanitizeFolderName(userNameParam);
+    const userDir = path.join(process.cwd(), 'public', 'uploads', 'profiles', folderName);
+    
+    if (!fs.existsSync(userDir)) {
+      try {
+        fs.mkdirSync(userDir, { recursive: true });
+      } catch (err) {
+        console.error("Failed to create profile dir", err);
+      }
+    }
+    cb(null, userDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname);
+    cb(null, 'photo-' + uniqueSuffix + ext);
+  }
+});
+
+const uploadProfile = multer({
+  storage: profileStorage,
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit for profile picture
+});
+
 // Initialize local JSON Database if it doesn't exist
 function loadDatabase(): AppDatabase {
   const initialState = getInitialDBState();
@@ -166,6 +199,87 @@ async function startServer() {
     }
     const publicUrl = `/uploads/${req.file.filename}`;
     res.json({ url: publicUrl, originalName: req.file.originalname, size: req.file.size });
+  });
+
+  // Profile picture upload (stores in individual folder name-wise)
+  app.post('/api/upload-profile-photo', uploadProfile.single('file'), (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    const userNameParam = req.query.userName as string || req.body.userName as string || 'default_user';
+    const folderName = sanitizeFolderName(userNameParam);
+    const publicUrl = `/uploads/profiles/${folderName}/${req.file.filename}`;
+    res.json({ url: publicUrl, originalName: req.file.originalname, size: req.file.size });
+  });
+
+  // Profile picture upload from URL
+  app.post('/api/upload-profile-photo-url', async (req, res) => {
+    const { imageUrl, userName } = req.body;
+    if (!imageUrl) {
+      return res.status(400).json({ error: 'কোনো ছবির লিংক পাওয়া যায়নি।' });
+    }
+    try {
+      const userNameParam = userName || 'default_user';
+      const folderName = sanitizeFolderName(userNameParam);
+      const userDir = path.join(process.cwd(), 'public', 'uploads', 'profiles', folderName);
+      
+      if (!fs.existsSync(userDir)) {
+        try {
+          fs.mkdirSync(userDir, { recursive: true });
+        } catch (dirErr) {
+          console.error("Failed to make user dynamic dir", dirErr);
+        }
+      }
+
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        return res.status(400).json({ error: 'প্রদত্ত লিংক থেকে ছবি ডাউনলোড করা যায়নি।' });
+      }
+
+      const contentType = response.headers.get('content-type') || '';
+      let ext = '.jpg';
+      if (contentType.includes('image/png')) ext = '.png';
+      else if (contentType.includes('image/webp')) ext = '.webp';
+      else if (contentType.includes('image/gif')) ext = '.gif';
+      else if (contentType.includes('image/jpeg')) ext = '.jpg';
+
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+      const filename = `photo-link-${uniqueSuffix}${ext}`;
+      
+      fs.writeFileSync(path.join(userDir, filename), buffer);
+
+      const publicUrl = `/uploads/profiles/${folderName}/${filename}`;
+      res.json({ url: publicUrl });
+    } catch (err: any) {
+      console.error('Failed to download image URL', err);
+      res.status(500).json({ error: 'ছবি ডাউনলোড করতে অপ্রত্যাশিত ত্রুটি দেখা দিয়েছে: ' + err.message });
+    }
+  });
+
+  // Image proxy to bypass CORS restrictions on html2canvas
+  app.get('/api/proxy-image', async (req, res) => {
+    const imageUrl = req.query.url as string;
+    if (!imageUrl) {
+      return res.status(400).send('URL is required');
+    }
+    try {
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        return res.status(400).send('Failed to fetch image');
+      }
+      const contentType = response.headers.get('content-type') || 'image/png';
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.send(buffer);
+    } catch (err: any) {
+      console.error('Image proxy error:', err);
+      res.status(500).send('Error proxying image');
+    }
   });
 
   // API Route - Get Entire DB
@@ -824,6 +938,27 @@ async function startServer() {
       action: `সদস্যতা স্ট্যাটাস পরিবর্তন: ${status === 'verified' ? 'অনুমোদিত' : 'প্রত্যাখ্যাত'}`,
       user: userEmail,
       details: `আবেদনকারী "${db.memberships[index].name}"-এর সদস্যতা যাচাই স্ট্যাটাস পরিবর্তন করা হয়েছে।`
+    });
+
+    saveDatabase(db);
+    res.json(db.memberships[index]);
+  });
+
+  app.put('/api/memberships/:id/photo', (req, res) => {
+    const { id } = req.params;
+    const { photoUrl } = req.body;
+    const db = loadDatabase();
+    const index = db.memberships.findIndex(m => m.id === id);
+    if (index === -1) return res.status(404).json({ error: 'Membership not found' });
+
+    db.memberships[index].photoUrl = photoUrl;
+    
+    db.logs.unshift({
+      id: 'log_' + Date.now(),
+      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      action: 'প্রোফাইল ছবি পরিবর্তন',
+      user: db.memberships[index].email,
+      details: `সদস্য "${db.memberships[index].name}" তাঁর প্রোফাইল ছবি সফলভাবে আপডেট করেছেন।`
     });
 
     saveDatabase(db);

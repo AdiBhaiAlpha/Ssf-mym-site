@@ -293,7 +293,7 @@ export default function Hero({ news, circulars, events, setCurrentTab, aboutText
           return (
             <div className="bg-rose-50/20 dark:bg-zinc-900/45 border border-rose-100/40 dark:border-zinc-800 p-6 rounded-sm shadow-xs max-w-xl mx-auto flex flex-col justify-center items-center min-h-[110px]">
               <span className="text-[9px] uppercase tracking-wider font-mono text-rose-600 dark:text-rose-400 font-bold mb-2.5 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded select-none">
-                বিপ্লবী শ্লোগান আর্কাইভ
+                আমাদের শ্লোগানসমূহ
               </span>
               <div className="relative w-full h-8 flex items-center justify-center overflow-hidden">
                 <AnimatePresence mode="wait">

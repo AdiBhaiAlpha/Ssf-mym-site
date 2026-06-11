@@ -166,6 +166,12 @@ export default function AdminDashboard({
   const [missionForm, setMissionForm] = useState(db.settings.missionText || '');
   const [visionForm, setVisionForm] = useState(db.settings.visionText || '');
   const [constForm, setConstForm] = useState(db.settings.constitutionalHeader || '');
+  const [oathTitleForm, setOathTitleForm] = useState(db.settings.oathTitle || 'ঐতিহাসিক বৈপ্লবিক অঙ্গীকার');
+  const [oathBodyForm, setOathBodyForm] = useState(db.settings.oathBody || 'সমাজতান্ত্রিক ছাত্র ফ্রন্ট কোনো প্রাতিষ্ঠানিক ডিগ্রি সংগ্রহের রাজনৈতিক লিয়াজোঁ ক্লাব নয়। এটি সাম্রাজ্যবাদ, পুঁজিবাদ ও সাম্প্রদায়িকতাবিরোধী সর্বজনীন মানবিক লড়াই শক্তিশালী করার বিপ্লব মডিউল। শিক্ষা, সুস্থ সংস্কৃতি ও প্রগতির বিপ্লবী পতাকাতলে সমাজ রূপান্তরে আত্মনিয়োগ করুন।');
+  const [idSignerNameForm, setIdSignerNameForm] = useState(db.settings.idSignerName || 'তানজিল হোসেন মুণিম');
+  const [idSignerRoleLine1Form, setIdSignerRoleLine1Form] = useState(db.settings.idSignerRoleLine1 || 'সভাপতি');
+  const [idSignerRoleLine2Form, setIdSignerRoleLine2Form] = useState(db.settings.idSignerRoleLine2 || 'সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা');
+  const [idSignerSignatureUrlForm, setIdSignerSignatureUrlForm] = useState(db.settings.idSignerSignatureUrl || '');
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSuccess, setSettingsSuccess] = useState(false);
 
@@ -345,6 +351,12 @@ export default function AdminDashboard({
       missionText: missionForm,
       visionText: visionForm,
       constitutionalHeader: constForm,
+      oathTitle: oathTitleForm,
+      oathBody: oathBodyForm,
+      idSignerName: idSignerNameForm,
+      idSignerRoleLine1: idSignerRoleLine1Form,
+      idSignerRoleLine2: idSignerRoleLine2Form,
+      idSignerSignatureUrl: idSignerSignatureUrlForm,
     });
     setSavingSettings(false);
     if (success) {
@@ -875,6 +887,72 @@ export default function AdminDashboard({
                       onChange={(e) => setConstForm(e.target.value)}
                       placeholder="সাংবিধানিক প্রস্তাবনা প্রথম সূচনা বাক্যটি লিখুন..."
                     />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-zinc-700 dark:text-zinc-300 block mb-1">ঐতিহাসিক বৈপ্লবিক অঙ্গীকার (Oath Title - মেম্বার পোর্টাল):</label>
+                    <input 
+                      type="text"
+                      className="text-xs font-sans border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-2 w-full bg-white dark:bg-zinc-950 focus:outline-rose-500/30 transition text-zinc-800 dark:text-zinc-150"
+                      value={oathTitleForm}
+                      onChange={(e) => setOathTitleForm(e.target.value)}
+                      placeholder="ঐতিহাসিক বৈপ্লবিক অঙ্গীকার..."
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-zinc-700 dark:text-zinc-300 block mb-1">অঙ্গীকারের মূল তথ্য (Oath Body - মেম্বার পোর্টাল):</label>
+                    <textarea 
+                      className="text-xs font-sans border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-2 w-full bg-white dark:bg-zinc-950 focus:outline-rose-500/30 transition text-zinc-800 dark:text-zinc-150 h-24"
+                      value={oathBodyForm}
+                      onChange={(e) => setOathBodyForm(e.target.value)}
+                      placeholder="অঙ্গীকারের মূল বা বিপ্লবী বাণী এখানে লিখুন..."
+                    />
+                  </div>
+
+                  <div className="pt-4 border-t border-zinc-150 dark:border-zinc-900/60 space-y-4">
+                    <h4 className="text-xs font-bold text-rose-500 select-none">মেম্বার আইডি কার্ড সেটিংস (E-ID Card Signature & Signer Details):</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="text-xs font-bold text-zinc-700 dark:text-zinc-300 block mb-1">স্বাক্ষরকারীর নাম (Signer Name):</label>
+                        <input 
+                          type="text"
+                          className="text-xs font-sans border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-2 w-full bg-white dark:bg-zinc-950 focus:outline-rose-500/30 transition text-zinc-800 dark:text-zinc-150"
+                          value={idSignerNameForm}
+                          onChange={(e) => setIdSignerNameForm(e.target.value)}
+                          placeholder="কমরেড তানজিল হোসেন মুণিম..."
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-zinc-700 dark:text-zinc-300 block mb-1">পদবী লাইন ১ (Role Line 1):</label>
+                        <input 
+                          type="text"
+                          className="text-xs font-sans border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-2 w-full bg-white dark:bg-zinc-950 focus:outline-rose-500/30 transition text-zinc-800 dark:text-zinc-150"
+                          value={idSignerRoleLine1Form}
+                          onChange={(e) => setIdSignerRoleLine1Form(e.target.value)}
+                          placeholder="সভাপতি..."
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-zinc-700 dark:text-zinc-300 block mb-1">পদবী লাইন ২ (Role Line 2):</label>
+                        <input 
+                          type="text"
+                          className="text-xs font-sans border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-2 w-full bg-white dark:bg-zinc-950 focus:outline-rose-500/30 transition text-zinc-800 dark:text-zinc-150"
+                          value={idSignerRoleLine2Form}
+                          onChange={(e) => setIdSignerRoleLine2Form(e.target.value)}
+                          placeholder="সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা..."
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <FileUploader 
+                        label="স্বাক্ষরের ছবি (Signature PNG Image):"
+                        value={idSignerSignatureUrlForm}
+                        onChange={(url) => setIdSignerSignatureUrlForm(url)}
+                        accept="image/png, image/jpeg, image/webp"
+                        placeholder="আপনার স্বাক্ষরের পিএনজি ছবি লিঙ্ক বা আপলোড করুন..."
+                      />
+                    </div>
                   </div>
                 </div>
 

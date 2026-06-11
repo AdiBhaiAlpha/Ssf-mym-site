@@ -16,6 +16,7 @@ export default function MembershipForm({ onRegisterMember, membersList }: Member
   const [name, setName] = useState('');
   const [mobile, setMobile] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [institution, setInstitution] = useState('');
   const [department, setDepartment] = useState('');
   const [academicYear, setAcademicYear] = useState('');
@@ -33,14 +34,29 @@ export default function MembershipForm({ onRegisterMember, membersList }: Member
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !mobile.trim() || !institution.trim()) return;
+    const nameVal = name.trim();
+    const mobileVal = mobile.trim();
+    const emailVal = email.trim();
+    const instVal = institution.trim();
+    const passVal = password.trim();
+
+    if (!nameVal || !mobileVal || !instVal || !passVal) {
+      alert('দয়া করে প্রতিটি প্রয়োজনীয় তথ্য দিয়ে এবং অবশ্যই পাসওয়ার্ড পূরণ করুন।');
+      return;
+    }
+
+    if (passVal.length < 4) {
+      alert('নিরাপত্তার স্বার্থে পাসওয়ার্ডটি অবশ্যই কমপক্ষে ৪ অক্ষরের হতে হবে।');
+      return;
+    }
 
     setSubmitting(true);
     const added = await onRegisterMember({
-      name: name.trim(),
-      mobile: mobile.trim(),
-      email: email.trim(),
-      institution: institution.trim(),
+      name: nameVal,
+      mobile: mobileVal,
+      email: emailVal,
+      password: passVal,
+      institution: instVal,
       department: department.trim(),
       academicYear: academicYear.trim(),
       address: address.trim(),
@@ -55,6 +71,7 @@ export default function MembershipForm({ onRegisterMember, membersList }: Member
       setName('');
       setMobile('');
       setEmail('');
+      setPassword('');
       setInstitution('');
       setDepartment('');
       setAcademicYear('');
@@ -195,7 +212,6 @@ export default function MembershipForm({ onRegisterMember, membersList }: Member
                     </div>
                     <ul className="space-y-1 font-mono text-[11px] text-zinc-700 dark:text-zinc-350 bg-white/60 dark:bg-zinc-900/60 p-2.5 rounded border border-emerald-100/50 dark:border-zinc-800/40">
                       <li><strong className="font-sans text-zinc-500">নাম:</strong> {verifiedMember.name}</li>
-                      <li><strong className="font-sans text-zinc-500">মেম্বার আইডি:</strong> SF-MY-{verifiedMember.id.substring(7, 12).toUpperCase()}</li>
                       <li><strong className="font-sans text-zinc-500">শিক্ষাঙ্গন:</strong> {verifiedMember.institution}</li>
                       <li><strong className="font-sans text-zinc-500">অবস্থা:</strong> <span className="text-emerald-600 font-bold">অনুমোদিত (সক্রিয়)</span></li>
                     </ul>
@@ -343,7 +359,7 @@ export default function MembershipForm({ onRegisterMember, membersList }: Member
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div>
                         <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-300 mb-1 font-mono uppercase tracking-wider">মোবাইল ফোন নম্বর *</label>
                         <input
@@ -358,13 +374,26 @@ export default function MembershipForm({ onRegisterMember, membersList }: Member
                       </div>
 
                       <div>
-                        <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-300 mb-1 font-mono uppercase tracking-wider">ইমেইল এড্রেস (ঐচ্ছিক)</label>
+                        <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-300 mb-1 font-mono uppercase tracking-wider">ইমেইল এড্রেস *</label>
                         <input
                           type="email"
+                          required
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-white rounded focus:outline-none"
                           placeholder="name@example.com"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-300 mb-1 font-mono uppercase tracking-wider">গোপনীয় পাসওয়ার্ড সেট করুন *</label>
+                        <input
+                          type="password"
+                          required
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-white rounded focus:outline-none"
+                          placeholder="কমপক্ষে ৪ অক্ষরের পাসওয়ার্ড"
                         />
                       </div>
                     </div>

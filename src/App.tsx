@@ -1038,8 +1038,10 @@ export default function App() {
             <MemberPortal
               member={loggedInMember}
               onLogout={handleLogout}
+              onRefresh={() => fetchDatabase(true)}
               circulars={db.circulars}
               books={db.books}
+              settings={db.settings}
             />
           ) : (
             <PortalAuth

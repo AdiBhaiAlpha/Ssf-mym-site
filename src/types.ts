@@ -98,6 +98,8 @@ export interface MemberRegistration {
   name: string;
   mobile: string;
   email: string;
+  password?: string;
+  photoUrl?: string;
   institution: string;
   department: string;
   academicYear: string;
@@ -153,6 +155,12 @@ export interface WebSettings {
   leadersExecutive: { name: string; role: string; inst: string; }[];
   leadersUnits: { unitName: string; leaders: { name: string; role: string; }[] }[];
   leadersFormer: { name: string; duration: string; contribution: string; }[];
+  oathTitle?: string;
+  oathBody?: string;
+  idSignerName?: string;
+  idSignerRoleLine1?: string;
+  idSignerRoleLine2?: string;
+  idSignerSignatureUrl?: string;
 }
 
 export interface OrgWing {
