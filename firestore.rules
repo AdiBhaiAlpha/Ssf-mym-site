@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() <= 128;
+    }
+
+    // Settings collection
+    match /settings/{docId} {
+      allow read, write: if true;
+    }
+
+    // News collection
+    match /news/{docId} {
+      allow read, write: if true;
+    }
+
+    // Blogs collection
+    match /blogs/{docId} {
+      allow read, write: if true;
+    }
+
+    // Events collection
+    match /events/{docId} {
+      allow read, write: if true;
+    }
+
+    // Books collection
+    match /books/{docId} {
+      allow read, write: if true;
+    }
+
+    // Circulars collection
+    match /circulars/{docId} {
+      allow read, write: if true;
+    }
+
+    // Gallery collection
+    match /gallery/{docId} {
+      allow read, write: if true;
+    }
+
+    // Memberships collection
+    match /memberships/{docId} {
+      allow read, write: if true;
+    }
+
+    // Logs collection
+    match /logs/{docId} {
+      allow read, write: if true;
+    }
+
+    // Visits collection (visitor analytics)
+    match /visits/{docId} {
+      allow read, write: if true;
+    }
+
+    // Organizations collection
+    match /organizations/{docId} {
+      allow read, write: if true;
+    }
+
+    // MemberLogins collection
+    match /memberLogins/{docId} {
+      allow read, write: if true;
+    }
+
+    // Invitations collection
+    match /invitations/{docId} {
+      allow read, write: if true;
+    }
+
+    // Global default-deny rule
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

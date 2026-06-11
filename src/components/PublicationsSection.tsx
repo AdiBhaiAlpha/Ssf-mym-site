@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BookOpen, Download, Eye, Tag, AlertTriangle, BookMarked, HelpCircle, FileText, CheckCircle, Lock } from 'lucide-react';
+import { BookOpen, Download, Eye, Tag, AlertTriangle, BookMarked, HelpCircle, FileText, CheckCircle, Lock, Share2, Facebook, Twitter, MessageSquare, Link, Check } from 'lucide-react';
 import { Book } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -15,6 +15,7 @@ export default function PublicationsSection({ books, onDownloadBook, isVerifiedM
   const [readingBook, setReadingBook] = useState<Book | null>(null);
   const [showDownloadNote, setShowDownloadNote] = useState<string | null>(null);
   const [restrictedBook, setRestrictedBook] = useState<Book | null>(null);
+  const [copiedBookId, setCopiedBookId] = useState<string | null>(null);
 
   const filteredBooks = books.filter((b) => {
     const matchesFilter = activeFilter === 'all' || b.type === activeFilter;
@@ -180,6 +181,55 @@ export default function PublicationsSection({ books, onDownloadBook, isVerifiedM
               <div className="mt-3 flex justify-between items-center text-[10px] text-zinc-400 font-mono">
                 <span>প্রকাশকাল: {book.date}</span>
                 <span>ডাউনলোড: {book.downloadCount || 0} বার</span>
+              </div>
+
+              {/* Social Share Row */}
+              <div id={`share-book-${book.id}`} className="mt-3.5 pt-3 border-t border-zinc-150 dark:border-zinc-900 flex justify-between items-center text-[10px]">
+                <span className="text-zinc-500 dark:text-zinc-400 font-bold flex items-center gap-1 font-sans">
+                  <Share2 className="w-3.5 h-3.5 text-rose-650" />
+                  <span>শেয়ারঃ</span>
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <a
+                    href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=books` : '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1.5 bg-zinc-50 hover:bg-[#1877F2]/10 text-zinc-500 hover:text-[#1877F2] rounded border border-zinc-200/50 dark:bg-zinc-900/40 dark:border-zinc-800/40 transition"
+                    title="ফেসবুকে শেয়ার"
+                  >
+                    <Facebook className="w-3 h-3" />
+                  </a>
+                  <a
+                    href={`https://twitter.com/intent/tweet?text=${encodeURIComponent('কমরেড, ' + book.title + ' বইটি পড়ার জন্য আমন্ত্রণঃ ')}&url=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=books` : '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1.5 bg-zinc-50 hover:bg-[#1DA1F2]/10 text-zinc-500 hover:text-[#1DA1F2] rounded border border-zinc-200/50 dark:bg-zinc-900/40 dark:border-zinc-800/40 transition"
+                    title="X-এ শেয়ার"
+                  >
+                    <Twitter className="w-3 h-3" />
+                  </a>
+                  <a
+                    href={`https://api.whatsapp.com/send?text=${encodeURIComponent('কমরেড, ' + book.title + ' বইটি পড়তে ভিজিট করুনঃ ' + (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=books` : ''))}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1.5 bg-zinc-50 hover:bg-[#25D366]/10 text-zinc-500 hover:text-[#25D366] rounded border border-zinc-200/50 dark:bg-zinc-900/45 dark:border-zinc-800/40 transition"
+                    title="হোয়াটসঅ্যাপে শেয়ার"
+                  >
+                    <MessageSquare className="w-3 h-3" />
+                  </a>
+                  <button
+                    onClick={() => {
+                      const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=books` : '';
+                      navigator.clipboard.writeText(shareUrl);
+                      setCopiedBookId(book.id);
+                      setTimeout(() => setCopiedBookId(null), 2000);
+                    }}
+                    className="p-1.5 bg-zinc-50 hover:bg-rose-150 text-zinc-500 hover:text-rose-600 rounded border border-zinc-200/50 dark:bg-zinc-900/45 dark:border-zinc-800/40 transition cursor-pointer"
+                    title="লিংক কপি"
+                  >
+                    {copiedBookId === book.id ? <Check className="w-3 h-3 text-emerald-600 font-bold" /> : <Link className="w-3 h-3" />}
+                  </button>
+                </div>
               </div>
 
               {/* Success Notification Alert */}

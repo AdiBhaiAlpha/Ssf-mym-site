@@ -24,6 +24,7 @@ interface AdminDashboardProps {
   onSaveOrganizations: (organizations: OrgWing[]) => Promise<boolean>;
   onAddInvitation?: (email: string, role: 'admin' | 'super_admin') => Promise<boolean>;
   onInviteAction?: (id: string, action: 'accepted' | 'declined') => Promise<boolean>;
+  onDeleteInvitation?: (id: string) => Promise<boolean>;
   onAddNews: (article: Omit<News, 'id' | 'views' | 'date'>) => Promise<boolean>;
   onEditNews: (id: string, article: Partial<News>) => Promise<boolean>;
   onDeleteNews: (id: string) => Promise<boolean>;
@@ -142,9 +143,19 @@ export default function AdminDashboard({
   onDeleteGallery,
   onVerifyMember,
   onDeleteMember,
+  onAddInvitation,
+  onInviteAction,
+  onDeleteInvitation,
 }: AdminDashboardProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'content' | 'settings' | 'members' | 'comments' | 'logs' | 'analytics' | 'activity'>('content');
+  const [activeSubTab, setActiveSubTab] = useState<'content' | 'settings' | 'members' | 'comments' | 'logs' | 'analytics' | 'activity' | 'invitations'>('content');
   const [activeModel, setActiveModel] = useState<'news' | 'blog' | 'event' | 'book' | 'circular' | 'gallery'>('news');
+
+  // Form states for invitation
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<'admin' | 'super_admin'>('admin');
+  const [inviteSuccess, setInviteSuccess] = useState('');
+  const [inviteError, setInviteError] = useState('');
+  const [inviteLoading, setInviteLoading] = useState(false);
 
   // Custom State-based Delete Confirm (bypass iframe window.confirm blocks)
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; type: string } | null>(null);
@@ -187,11 +198,17 @@ export default function AdminDashboard({
   const [actionSuccess, setActionSuccess] = useState(false);
   const [membersFilter, setMembersFilter] = useState<'pending' | 'verified' | 'rejected'>('pending');
 
+  const userAdminInvite = (db as any).invitations?.find(
+    (i: any) => i.email.toLowerCase() === userEmail?.toLowerCase() && i.status === 'accepted'
+  );
+
   const isSuperAdmin = 
     userEmail?.toLowerCase() === 'chitronbhattacharjee@gmail.com' ||
-    (db as any).invitations?.some(
-      (i: any) => i.email.toLowerCase() === userEmail?.toLowerCase() && i.status === 'accepted'
-    );
+    userAdminInvite?.role === 'super_admin';
+
+  const isAnyAdmin = 
+    userEmail?.toLowerCase() === 'chitronbhattacharjee@gmail.com' ||
+    !!userAdminInvite;
 
   const handleDownloadMembersCSV = () => {
     const verifiedMembers = db.memberships.filter(m => m.status === 'verified');
@@ -303,13 +320,13 @@ export default function AdminDashboard({
     }
   };
 
-  if (!isSuperAdmin) {
+  if (!isAnyAdmin) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-16 text-center font-sans">
         <ShieldAlert className="w-16 h-16 text-rose-600 mx-auto animate-bounce mb-4" />
         <h2 className="text-xl font-bold text-zinc-900 dark:text-white">অননুমোদিত প্রবেশাধিকার</h2>
         <p className="text-sm text-zinc-500 mt-2">
-          দুঃখিত, এই পেজে শুধুমাত্র সুপার এডমিন (<span className="font-mono text-rose-600">chitronbhattacharjee@gmail.com</span>) প্রবেশ করার অনুমতি প্রাপ্ত।
+          দুঃখিত, এই পেজে শুধুমাত্র অনুমোদিত এডমিন ও সুপার এডমিনদের প্রবেশ করার অনুমতি প্রাপ্ত।
         </p>
       </div>
     );
@@ -557,14 +574,15 @@ export default function AdminDashboard({
         {/* Left Side Columns: Main Tabs Menu Selector (3/12) */}
         <div className="lg:col-span-3 space-y-2">
           {[
-            { id: 'content', label: 'কন্টেন্ট ম্যানেজমেন্ট', icon: FileText },
-            { id: 'settings', label: 'সাইট ভিজিবিলিটি / লেআউট', icon: Settings },
-            { id: 'members', label: 'ভর্তি আবেদনপত্র ({count})'.replace('{count}', db.memberships.filter(m => m.status === 'pending').length.toString()), icon: Users },
-            { id: 'comments', label: 'মন্তব্য অনুমোদন ({count})'.replace('{count}', db.blogs.reduce((acc, b) => acc + (b.comments?.filter(c => !c.approved).length || 0), 0).toString()), icon: MessageSquare },
-            { id: 'analytics', label: 'ভিজিটর ও সাইট এনালাইটিকস', icon: BarChart3 },
-            { id: 'activity', label: 'সদস্য অ্যাক্টিভিটি লগ ({count})'.replace('{count}', (db.memberLogins || []).length.toString()), icon: Clock },
-            { id: 'logs', label: 'অডিট লগ রিপোর্ট', icon: Activity }
-          ].map((tab) => {
+            { id: 'content', label: 'কন্টেন্ট ম্যানেজমেন্ট', icon: FileText, visible: true },
+            { id: 'settings', label: 'সাইট ভিজিবিলিটি / লেআউট', icon: Settings, visible: true },
+            { id: 'members', label: 'ভর্তি আবেদনপত্র ({count})'.replace('{count}', db.memberships.filter(m => m.status === 'pending').length.toString()), icon: Users, visible: true },
+            { id: 'comments', label: 'মন্তব্য অনুমোদন ({count})'.replace('{count}', db.blogs.reduce((acc, b) => acc + (b.comments?.filter(c => !c.approved).length || 0), 0).toString()), icon: MessageSquare, visible: true },
+            { id: 'analytics', label: 'ভিজিটর ও সাইট এনালাইটিকস', icon: BarChart3, visible: true },
+            { id: 'activity', label: 'সদস্য অ্যাক্টিভিটি লগ ({count})'.replace('{count}', (db.memberLogins || []).length.toString()), icon: Clock, visible: true },
+            { id: 'logs', label: 'অডিট লগ রিপোর্ট', icon: Activity, visible: true },
+            { id: 'invitations', label: 'এডমিন নিয়োগ সেটিংস ({count})'.replace('{count}', ((db as any).invitations || []).filter((i: any) => i.status === 'pending').length.toString()), icon: Shield, visible: isSuperAdmin }
+          ].filter(tab => tab.visible).map((tab) => {
             const Icon = tab.icon;
             return (
               <button
@@ -2051,6 +2069,202 @@ export default function AdminDashboard({
                      কোনো নিরাপত্তা ইভেন্ট বা লগইন রেকর্ড পাওয়া যায়নি।
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {activeSubTab === 'invitations' && isSuperAdmin && (
+            <div className="space-y-6 font-sans">
+              <div className="border-b border-zinc-150 dark:border-zinc-900 pb-3.5 mb-4">
+                <h3 className="text-sm font-bold text-rose-700 dark:text-rose-450 flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-rose-650" />
+                  <span>এডমিন ও সুপার এডমিন নিমন্ত্রণ সেটিংস</span>
+                </h3>
+                <p className="text-xs text-zinc-500 mt-1">
+                  নতুন সম্মানিত কমরেডদের ইমেইলে এডমিন প্যানেল নিমন্ত্রণ পাঠান। নিমন্ত্রণ গ্রহণ করার সাথে সাথে তারা উপযুক্ত ড্যাশবোর্ড পারমিশন ও কন্টেন্ট ম্যানেজমেন্টের ক্ষমতা লাভ করবেন।
+                </p>
+              </div>
+
+              {/* Invitation Form Card */}
+              <div className="bg-white dark:bg-zinc-950 p-5 rounded-lg border border-zinc-200 dark:border-zinc-900 max-w-xl shadow-xs">
+                <h4 className="text-xs font-extrabold text-zinc-900 dark:text-white uppercase tracking-wider mb-4">
+                  নতুন নিমন্ত্রণ বার্তা পাঠান
+                </h4>
+                
+                {inviteSuccess && (
+                  <div className="mb-4 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-400 p-3 rounded text-xs font-bold border border-emerald-200/20">
+                    {inviteSuccess}
+                  </div>
+                )}
+                {inviteError && (
+                  <div className="mb-4 bg-rose-50 dark:bg-rose-950/20 text-rose-800 dark:text-rose-400 p-3 rounded text-xs font-bold border border-rose-200/20">
+                    {inviteError}
+                  </div>
+                )}
+
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!inviteEmail.trim()) return;
+                    setInviteLoading(true);
+                    setInviteSuccess('');
+                    setInviteError('');
+                    
+                    try {
+                      if (onAddInvitation) {
+                        const success = await onAddInvitation(inviteEmail.trim(), inviteRole);
+                        if (success) {
+                          setInviteSuccess(`কমরেড ${inviteEmail.trim()}-কে সফলভাবে নিমন্ত্রণ পাঠানো হয়েছে!`);
+                          setInviteEmail('');
+                        } else {
+                          setInviteError('দুঃখিত, নিমন্ত্রণ পাঠাতে সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।');
+                        }
+                      }
+                    } catch (err) {
+                      setInviteError(err instanceof Error ? err.message : 'ত্রুটি ঘটেছে');
+                    } finally {
+                      setInviteLoading(false);
+                    }
+                  }}
+                  className="space-y-4 text-xs"
+                >
+                  <div>
+                    <label className="block text-zinc-700 dark:text-zinc-300 font-semibold mb-1">
+                      কমরেডের ইমেল ঠিকানা (Email Address) *
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      placeholder="যেমনঃ comrade@email.com"
+                      className="w-full px-3 py-2 bg-transparent border border-zinc-250 dark:border-zinc-800 text-zinc-900 dark:text-white rounded focus:ring-1 focus:ring-rose-500 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-zinc-700 dark:text-zinc-300 font-semibold mb-1">
+                      প্রস্তাবিত দায়িত্ব / রোল (Role Type) *
+                    </label>
+                    <div className="grid grid-cols-2 gap-3 mt-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setInviteRole('admin')}
+                        className={`p-3 rounded-lg border text-left flex flex-col justify-between transition cursor-pointer ${
+                          inviteRole === 'admin'
+                            ? 'border-rose-600 bg-rose-50/40 dark:bg-rose-950/10'
+                            : 'border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 hover:bg-zinc-50'
+                        }`}
+                      >
+                        <span className="font-bold text-zinc-900 dark:text-white font-sans">সমন্বয়ক এডমিন</span>
+                        <span className="text-[10px] text-zinc-500 mt-1 leading-normal">কন্টেন্ট আপডেট, নোটিশ প্রকাশ ও সাধারণ সংশোধন করতে পারবেন।</span>
+                      </button>
+                      
+                      <button
+                        type="button"
+                        onClick={() => setInviteRole('super_admin')}
+                        className={`p-3 rounded-lg border text-left flex flex-col justify-between transition cursor-pointer ${
+                          inviteRole === 'super_admin'
+                            ? 'border-rose-600 bg-rose-50/40 dark:bg-rose-950/10'
+                            : 'border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 hover:bg-zinc-50'
+                        }`}
+                      >
+                        <span className="font-bold text-rose-700 dark:text-rose-455 font-sans">সুপার এডমিন</span>
+                        <span className="text-[10px] text-zinc-500 mt-1 leading-normal font-sans">নতুন এডমিন নিয়োগ, ডাটাবেজ নিয়ন্ত্রণ সহ সকল ড্যাশবোর্ড ফিচারে পূর্ণ অ্যাক্সেস।</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      type="submit"
+                      disabled={inviteLoading}
+                      className="w-full py-2 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white font-bold rounded shadow transition cursor-pointer font-sans"
+                    >
+                      {inviteLoading ? 'ইনভাইট পাঠানো হচ্ছে...' : 'ইনভাইটেশন লিংক ও পুশ নোটিফিকেশন পাঠান'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              {/* Status List */}
+              <div className="border border-zinc-150 dark:border-zinc-900 rounded overflow-hidden select-text">
+                <div className="p-4 bg-zinc-50 dark:bg-zinc-900/60 border-b border-zinc-150 dark:border-zinc-900 flex justify-between items-center">
+                  <h4 className="text-xs font-bold text-zinc-900 dark:text-white">
+                    সর্বমোট প্রেরিত নিমন্ত্রণ তালিকা
+                  </h4>
+                  <span className="text-[10px] font-mono text-zinc-505 dark:text-zinc-400">
+                    কাউন্টঃ {((db as any).invitations || []).length}
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left text-zinc-700 dark:text-zinc-300">
+                    <thead className="bg-zinc-50 dark:bg-zinc-900 text-[10px] text-zinc-500 uppercase tracking-wider border-b border-zinc-150 dark:border-zinc-805">
+                      <tr>
+                        <th className="px-4 py-3 font-bold font-sans">সময় ও প্রেরক</th>
+                        <th className="px-4 py-3 font-bold font-sans">নিমন্ত্রিত ইমেইল</th>
+                        <th className="px-4 py-3 font-bold font-sans">প্রস্তাবিত দায়িত্ব</th>
+                        <th className="px-4 py-3 font-bold font-sans">অবস্থা (Status)</th>
+                        <th className="px-4 py-3 font-bold font-sans text-right">পদক্ষেপ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-150 dark:divide-zinc-900 font-mono text-[11px]">
+                      {(((db as any).invitations || []).map((invite: any) => (
+                        <tr key={invite.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-900/40 transition">
+                          <td className="px-4 py-3 whitespace-nowrap leading-tight">
+                            <span className="block text-zinc-500 font-sans text-[10px]">{invite.timestamp}</span>
+                            <span className="text-[9px] text-rose-650 font-sans mt-0.5 block">দ্বারাঃ {invite.invitedBy}</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="font-bold text-zinc-900 dark:text-white select-all underline">{invite.email}</span>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span className={`px-2 py-0.5 rounded-xs text-[9px] font-extrabold uppercase ${
+                              invite.role === 'super_admin'
+                                ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200/20'
+                                : 'bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-200/20'
+                            }`}>
+                              {invite.role === 'super_admin' ? 'SUPER_ADMIN' : 'COORDINATOR_ADMIN'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span className={`px-2 py-0.5 rounded-xs text-[9px] font-extrabold uppercase ${
+                              invite.status === 'accepted'
+                                ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-450 border border-emerald-250/20'
+                                : invite.status === 'declined'
+                                ? 'bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-450 border border-rose-250/20'
+                                : 'bg-zinc-100 dark:bg-zinc-850 text-zinc-650 dark:text-zinc-400 border border-zinc-250/10 animate-pulse'
+                            }`}>
+                              {invite.status === 'accepted' ? '✔ ACCEPTED' : invite.status === 'declined' ? '🚨 DECLINED' : '⏳ PENDING'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right whitespace-nowrap">
+                            {onDeleteInvitation && (
+                              <button
+                                onClick={async () => {
+                                  if (confirm(`আপনি কি কমরেড ${invite.email}-এর নিমন্ত্রণটি বাতিল করতে নিশ্চিত?`)) {
+                                    await onDeleteInvitation(invite.id);
+                                  }
+                                }}
+                                className="px-2 py-1 bg-rose-600/10 hover:bg-rose-600 text-rose-600 hover:text-white rounded text-[10px] font-bold transition font-sans cursor-pointer"
+                              >
+                                মুছুন
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      )))}
+                      {((db as any).invitations || []).length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="py-12 text-center text-zinc-450 italic font-sans">
+                            কোনো এডমিন নিমন্ত্রণ পাঠানো হয়নি।
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}

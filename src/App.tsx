@@ -16,6 +16,7 @@ import ContactSection from './components/ContactSection';
 import AdminDashboard from './components/AdminDashboard';
 import { AppDatabase } from './server/db-initial';
 import { Volume2, RefreshCw, Smartphone, Monitor, ChevronRight } from 'lucide-react';
+import { fetchFirestoreDatabase, saveFirestoreDoc, deleteFirestoreDoc, resetFirestoreDatabase } from './firebase';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
@@ -94,15 +95,30 @@ export default function App() {
     if (savedTheme === 'dark') {
       setDarkMode(true);
       document.documentElement.classList.add('dark');
-    } else {
+    } else if (savedTheme === 'light') {
       setDarkMode(false);
       document.documentElement.classList.remove('dark');
+    } else {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      setDarkMode(prefersDark);
+      if (prefersDark) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
     }
 
     // Auth state restore
     const savedEmail = localStorage.getItem('admin-email');
     if (savedEmail) {
       setUserEmail(savedEmail);
+    }
+
+    // Check query parameters to deep-link to tabs
+    const params = new URLSearchParams(window.location.search);
+    const urlTab = params.get('tab');
+    if (urlTab && ['home', 'news', 'books', 'events', 'circulars', 'about', 'join', 'portal', 'media', 'contact'].includes(urlTab)) {
+      setCurrentTab(urlTab);
     }
 
     // Fetch database contents
@@ -125,65 +141,107 @@ export default function App() {
     if (db) {
       const device = window.innerWidth < 768 ? 'mobile' : window.innerWidth < 1024 ? 'tablet' : 'desktop';
       const mappedTabName = currentTab === 'home' ? 'হোমপেজ' : currentTab === 'news' ? 'নিউজ পোর্টাল' : currentTab === 'books' ? 'শিক্ষা ও প্রকাশনা' : currentTab;
+      const dateString = new Date().toISOString().split('T')[0];
+      const visitId = `v_${dateString}_${mappedTabName}_${device}_${Date.now()}`;
       
-      fetch('/api/analytics/visit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ page: mappedTabName, device })
+      saveFirestoreDoc('visits', visitId, {
+        id: visitId,
+        date: dateString,
+        page: mappedTabName,
+        device,
+        views: 1
       }).catch(err => console.error('Failed to log visitor analytics', err));
     }
-  }, [currentTab, db]);
+  }, [currentTab, db ? true : false]);
 
-  const fetchDatabase = async () => {
+  const fetchDatabase = async (silent = false) => {
+    let hasCache = false;
     try {
-      setLoading(true);
-      const res = await fetch('/api/db');
-      if (!res.ok) throw new Error('সার্ভার থেকে ডেটা লোড করা যায়নি।');
-      const data = await res.json();
+      const cachedData = localStorage.getItem('scf_database_cache');
+      if (cachedData) {
+        const parsed = JSON.parse(cachedData);
+        if (parsed && typeof parsed === 'object' && parsed.settings) {
+          setDb(parsed);
+          setErrorMsg(null);
+          // With cache available, instantly lift the loading state to keep app fully interactive
+          setLoading(false);
+          hasCache = true;
+          // Force background sync mode to run silently in the background
+          silent = true;
+        }
+      }
+    } catch (cacheError) {
+      console.warn('Cache loading bypassed:', cacheError);
+    }
+
+    try {
+      if (!silent && !hasCache) {
+        setLoading(true);
+      }
+      const data = await fetchFirestoreDatabase();
+      
+      // Update local cache asynchronously for subsequent visits
+      try {
+        localStorage.setItem('scf_database_cache', JSON.stringify(data));
+      } catch (saveError) {
+        console.warn('Failed to save database cache to localStorage:', saveError);
+      }
+
       setDb(data);
       setErrorMsg(null);
     } catch (err: any) {
-      console.error('Database fetch failure', err);
-      setErrorMsg(err?.message || 'Error communicating with full-stack server.');
+      console.error('Database sync and fetch failure', err);
+      // Only show error message if we don't have any data loaded (either in state or cache)
+      if (!hasCache && !db) {
+        setErrorMsg(err?.message || 'Error communicating with cloud database.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLogin = (email: string) => {
+  const handleLogin = async (email: string) => {
     setUserEmail(email);
     localStorage.setItem('admin-email', email);
-    // Write system log to backend
     if (email.toLowerCase() === 'chitronbhattacharjee@gmail.com') {
-      fetch('/api/logs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'সুপার এডমিন লগইন',
-          user: email,
-          details: 'চিত্তাভ ভট্টাচার্য সফলতার সাথে ড্যাশবোর্ডে লগইন করেছেন।'
-        })
-      });
+      const logId = 'log_' + Date.now();
+      const logData = {
+        id: logId,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        action: 'সুপার এডমিন লগইন',
+        user: email,
+        details: 'চিত্তাভ ভট্টাচার্য সফলতার সাথে ড্যাশবোর্ডে লগইন করেছেন।'
+      };
+      try {
+        await saveFirestoreDoc('logs', logId, logData);
+      } catch (e) {
+        console.error(e);
+      }
+      await fetchDatabase();
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (userEmail) {
-      fetch('/api/logs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'লগআউট',
-          user: userEmail,
-          details: 'এডমিন পোর্টাল থেকে সেশন বাতিল করা হয়েছে।'
-        })
-      }).finally(() => {
-        setUserEmail(null);
-        localStorage.removeItem('admin-email');
-        if (currentTab === 'admin') {
-          setCurrentTab('home');
-        }
-      });
+      const logId = 'log_' + Date.now();
+      const logData = {
+        id: logId,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        action: 'লগআউট',
+        user: userEmail,
+        details: 'এডমিন পোর্টাল থেকে সেশন বাতিল করা হয়েছে।'
+      };
+      setUserEmail(null);
+      localStorage.removeItem('admin-email');
+      if (currentTab === 'admin') {
+        setCurrentTab('home');
+      }
+      try {
+        await saveFirestoreDoc('logs', logId, logData);
+      } catch (e) {
+        console.error(e);
+      }
+      await fetchDatabase();
     }
   };
 
@@ -191,16 +249,9 @@ export default function App() {
   const handleResetDB = async () => {
     if (!userEmail) return false;
     try {
-      const res = await fetch('/api/db/reset', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userEmail })
-      });
-      if (res.ok) {
-        const freshDb = await res.json();
-        setDb(freshDb);
-        return true;
-      }
+      await resetFirestoreDatabase();
+      await fetchDatabase();
+      return true;
     } catch (e) {
       console.error(e);
     }
@@ -210,16 +261,9 @@ export default function App() {
   const handleSaveSettings = async (settings: any) => {
     if (!userEmail) return false;
     try {
-      const res = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings, userEmail })
-      });
-      if (res.ok) {
-        const freshSettings = await res.json();
-        if (db) setDb({ ...db, settings: freshSettings });
-        return true;
-      }
+      await saveFirestoreDoc('settings', 'webSettings', settings);
+      await fetchDatabase();
+      return true;
     } catch (e) {
       console.error(e);
     }
@@ -229,16 +273,13 @@ export default function App() {
   const handleSaveOrganizations = async (organizations: any) => {
     if (!userEmail) return false;
     try {
-      const res = await fetch('/api/organizations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ organizations, userEmail })
-      });
-      if (res.ok) {
-        const freshOrgs = await res.json();
-        if (db) setDb({ ...db, organizations: freshOrgs });
-        return true;
+      for (const org of organizations) {
+        if (org.id) {
+          await saveFirestoreDoc('organizations', org.id, org);
+        }
       }
+      await fetchDatabase();
+      return true;
     } catch (e) {
       console.error(e);
     }
@@ -248,18 +289,55 @@ export default function App() {
   const handleAddInvitation = async (email: string, role: 'admin' | 'super_admin') => {
     if (!userEmail) return false;
     try {
-      const res = await fetch('/api/invitations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, role, invitedBy: userEmail })
-      });
-      if (res.ok) {
-        // Fetch to update db settings with new invites
-        const dbRes = await fetch('/api/db');
-        if (dbRes.ok) {
-          const freshDb = await dbRes.json();
-          setDb(freshDb);
-        }
+      const cleanEmail = email.trim().toLowerCase();
+      const id = 'invite_' + Date.now();
+      const newInvite = {
+        id,
+        email: cleanEmail,
+        role: role || 'admin',
+        status: 'pending' as const,
+        invitedBy: userEmail,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19)
+      };
+      await saveFirestoreDoc('invitations', id, newInvite);
+
+      // Save log
+      const logId = 'log_' + Date.now();
+      const logData = {
+        id: logId,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        action: 'এডমিন নিমন্ত্রণ পাঠানো হয়েছে',
+        user: userEmail,
+        details: `${cleanEmail} কমরেডকে ${role === 'super_admin' ? 'সুপার এডমিন' : 'সমন্বয়ক এডমিন'} হিসেবে দায়িত্ব বা প্যানেল নিমন্ত্রণ পাঠানো হয়েছে।`
+      };
+      await saveFirestoreDoc('logs', logId, logData);
+
+      await fetchDatabase();
+      return true;
+    } catch (e) {
+      console.error(e);
+    }
+    return false;
+  };
+
+  const handleDeleteInvitation = async (id: string) => {
+    try {
+      const matched = db?.invitations?.find(i => i.id === id);
+      if (matched) {
+        await deleteFirestoreDoc('invitations', id);
+
+        // Save log
+        const logId = 'log_' + Date.now();
+        const logData = {
+          id: logId,
+          timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+          action: 'এডমিন নিমন্ত্রণ বাতিল',
+          user: userEmail || 'unknown',
+          details: `কমরেড ${matched.email}-এর এডমিন নিমন্ত্রণটি প্যানেল থেকে সফলভাবে বাতিল করা হয়েছে।`
+        };
+        await saveFirestoreDoc('logs', logId, logData);
+
+        await fetchDatabase();
         return true;
       }
     } catch (e) {
@@ -270,18 +348,23 @@ export default function App() {
 
   const handleInviteAction = async (id: string, action: 'accepted' | 'declined') => {
     try {
-      const res = await fetch(`/api/invitations/${id}/action`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, email: userEmail || '' })
-      });
-      if (res.ok) {
-        // Fetch fresh db immediately
-        const dbRes = await fetch('/api/db');
-        if (dbRes.ok) {
-          const freshDb = await dbRes.json();
-          setDb(freshDb);
-        }
+      const matched = db?.invitations?.find(i => i.id === id);
+      if (matched) {
+        const updated = { ...matched, status: action };
+        await saveFirestoreDoc('invitations', id, updated);
+
+        // Save log
+        const logId = 'log_' + Date.now();
+        const logData = {
+          id: logId,
+          timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+          action: `নিমন্ত্রণ ${action === 'accepted' ? 'অনুমোদিত' : 'প্রত্যাখ্যাত'}`,
+          user: userEmail || matched.email,
+          details: `কমরেড ${matched.email} এডমিন নিমন্ত্রণ ${action === 'accepted' ? 'সরাসরি গ্রহণ করে পূর্ণ এডমিন প্যানেল এক্সেস সেশন চালু করেছেন।' : 'প্রত্যাখ্যান করেছেন।'}`
+        };
+        await saveFirestoreDoc('logs', logId, logData);
+        
+        await fetchDatabase();
         return true;
       }
     } catch (e) {
@@ -293,15 +376,28 @@ export default function App() {
   const handleAddNews = async (article: any) => {
     if (!userEmail) return false;
     try {
-      const res = await fetch('/api/news', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ article, userEmail })
-      });
-      if (res.ok) {
-        await fetchDatabase();
-        return true;
-      }
+      const id = 'news_' + Date.now();
+      const item = {
+        ...article,
+        id,
+        views: 0,
+        date: new Date().toISOString().split('T')[0]
+      };
+      await saveFirestoreDoc('news', id, item);
+
+      // Log news added
+      const logId = 'log_' + Date.now();
+      const logData = {
+        id: logId,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        action: 'নিউজ তৈরি',
+        user: userEmail,
+        details: `"${article.title}" শিরোনামে খবর প্রকাশিত করা হয়েছে।`
+      };
+      await saveFirestoreDoc('logs', logId, logData);
+
+      await fetchDatabase();
+      return true;
     } catch (e) {
       console.error(e);
     }
@@ -311,15 +407,23 @@ export default function App() {
   const handleEditNews = async (id: string, article: any) => {
     if (!userEmail) return false;
     try {
-      const res = await fetch(`/api/news/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ article, userEmail })
-      });
-      if (res.ok) {
-        await fetchDatabase();
-        return true;
-      }
+      const matched = db?.news?.find(n => n.id === id);
+      const updated = { ...matched, ...article, id };
+      await saveFirestoreDoc('news', id, updated);
+
+      // Log
+      const logId = 'log_' + Date.now();
+      const logData = {
+        id: logId,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        action: 'নিউজ সম্পাদিত',
+        user: userEmail,
+        details: `"${updated.title}" শিরোনামের খবর এডিট বা আপডেট করা হয়েছে।`
+      };
+      await saveFirestoreDoc('logs', logId, logData);
+
+      await fetchDatabase();
+      return true;
     } catch (e) {
       console.error(e);
     }
@@ -329,18 +433,22 @@ export default function App() {
   const handleDeleteNews = async (id: string) => {
     if (!userEmail) return false;
     try {
-      const res = await fetch(`/api/news/${id}?userEmail=${encodeURIComponent(userEmail)}`, {
-        method: 'DELETE',
-        headers: { 
-          'Content-Type': 'application/json',
-          'user-email': userEmail 
-        },
-        body: JSON.stringify({ userEmail })
-      });
-      if (res.ok) {
-        await fetchDatabase();
-        return true;
-      }
+      const matched = db?.news?.find(n => n.id === id);
+      await deleteFirestoreDoc('news', id);
+
+      // Log
+      const logId = 'log_' + Date.now();
+      const logData = {
+        id: logId,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        action: 'নিউজ অপসারিত',
+        user: userEmail,
+        details: `"${matched?.title || id}" খবরটি ডেটাবেজ থেকে মুছে দেওয়া হয়েছে।`
+      };
+      await saveFirestoreDoc('logs', logId, logData);
+
+      await fetchDatabase();
+      return true;
     } catch (e) {
       console.error(e);
     }
@@ -350,15 +458,29 @@ export default function App() {
   const handleAddBlog = async (blogPost: any) => {
     if (!userEmail) return false;
     try {
-      const res = await fetch('/api/blogs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ blogPost, userEmail })
-      });
-      if (res.ok) {
-        await fetchDatabase();
-        return true;
-      }
+      const id = 'blog_' + Date.now();
+      const item = {
+        ...blogPost,
+        id,
+        views: 0,
+        comments: [],
+        date: new Date().toISOString().split('T')[0]
+      };
+      await saveFirestoreDoc('blogs', id, item);
+
+      // Log
+      const logId = 'log_' + Date.now();
+      const logData = {
+        id: logId,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        action: 'ব্লগ তৈরি',
+        user: userEmail,
+        details: `"${blogPost.title}" প্রগতিশীল প্রবন্ধটি সফলভাবে প্রকাশ করা হয়েছে।`
+      };
+      await saveFirestoreDoc('logs', logId, logData);
+
+      await fetchDatabase();
+      return true;
     } catch (e) {
       console.error(e);
     }
@@ -368,18 +490,22 @@ export default function App() {
   const handleDeleteBlog = async (id: string) => {
     if (!userEmail) return false;
     try {
-      const res = await fetch(`/api/blogs/${id}?userEmail=${encodeURIComponent(userEmail)}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'user-email': userEmail
-        },
-        body: JSON.stringify({ userEmail })
-      });
-      if (res.ok) {
-        await fetchDatabase();
-        return true;
-      }
+      const matched = db?.blogs?.find(b => b.id === id);
+      await deleteFirestoreDoc('blogs', id);
+
+      // Log
+      const logId = 'log_' + Date.now();
+      const logData = {
+        id: logId,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        action: 'ব্লগ অপসারিত',
+        user: userEmail,
+        details: `"${matched?.title || id}" নিবন্ধটি মুছে দেওয়া হয়েছে।`
+      };
+      await saveFirestoreDoc('logs', logId, logData);
+
+      await fetchDatabase();
+      return true;
     } catch (e) {
       console.error(e);
     }
@@ -388,16 +514,24 @@ export default function App() {
 
   const handleAddComment = async (blogId: string, authorName: string, authorEmail: string, text: string) => {
     try {
-      const res = await fetch(`/api/blogs/${blogId}/comments`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ authorName, authorEmail, text })
-      });
-      if (res.ok) {
-        const newC = await res.json();
-        await fetchDatabase();
-        return newC;
-      }
+      const matchedBlog = db?.blogs?.find(b => b.id === blogId);
+      if (!matchedBlog) return null;
+
+      const newC = {
+        id: 'comment_' + Date.now(),
+        authorName,
+        authorEmail,
+        text,
+        date: new Date().toISOString().split('T')[0],
+        approved: authorEmail.toLowerCase() === 'chitronbhattacharjee@gmail.com' || (db as any).invitations?.some((i: any) => i.email.toLowerCase() === authorEmail.toLowerCase() && i.status === 'accepted')
+      };
+
+      const updatedComments = [...(matchedBlog.comments || []), newC];
+      const updatedBlog = { ...matchedBlog, comments: updatedComments };
+      await saveFirestoreDoc('blogs', blogId, updatedBlog);
+
+      await fetchDatabase();
+      return newC;
     } catch (e) {
       console.error(e);
     }
@@ -407,17 +541,21 @@ export default function App() {
   const handleApproveComment = async (blogId: string, commentId: string) => {
     if (!userEmail) return false;
     try {
-      const res = await fetch(`/api/blogs/${blogId}/comments/${commentId}/approve`, {
-        method: 'PUT',
-        headers: { 
-          'Content-Type': 'application/json',
-          'user-email': userEmail
+      const matchedBlog = db?.blogs?.find(b => b.id === blogId);
+      if (!matchedBlog) return false;
+
+      const comments = (matchedBlog.comments || []).map(c => {
+        if (c.id === commentId) {
+          return { ...c, approved: true };
         }
+        return c;
       });
-      if (res.ok) {
-        await fetchDatabase();
-        return true;
-      }
+
+      const updatedBlog = { ...matchedBlog, comments };
+      await saveFirestoreDoc('blogs', blogId, updatedBlog);
+
+      await fetchDatabase();
+      return true;
     } catch (e) {
       console.error(e);
     }
@@ -427,15 +565,23 @@ export default function App() {
   const handleAddEvent = async (event: any) => {
     if (!userEmail) return false;
     try {
-      const res = await fetch('/api/events', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ event, userEmail })
-      });
-      if (res.ok) {
-        await fetchDatabase();
-        return true;
-      }
+      const id = 'event_' + Date.now();
+      const item = { ...event, id, registrants: [], status: 'upcoming' };
+      await saveFirestoreDoc('events', id, item);
+
+      // Log
+      const logId = 'log_' + Date.now();
+      const logData = {
+        id: logId,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        action: 'ইভেন্ট তৈরি',
+        user: userEmail,
+        details: `"${event.title}" ইভেন্টটি যুক্ত করা হয়েছে।`
+      };
+      await saveFirestoreDoc('logs', logId, logData);
+
+      await fetchDatabase();
+      return true;
     } catch (e) {
       console.error(e);
     }
@@ -444,16 +590,21 @@ export default function App() {
 
   const handleRegisterEvent = async (eventId: string, details: any) => {
     try {
-      const res = await fetch(`/api/events/${eventId}/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(details)
-      });
-      if (res.ok) {
-        const added = await res.json();
-        await fetchDatabase();
-        return added;
-      }
+      const matched = db?.events?.find(e => e.id === eventId);
+      if (!matched) return null;
+
+      const newReg = {
+        id: 'reg_' + Date.now(),
+        ...details,
+        appliedAt: new Date().toISOString().replace('T', ' ').substring(0, 19)
+      };
+
+      const registrants = [...(matched.registrants || []), newReg];
+      const updated = { ...matched, registrants };
+      await saveFirestoreDoc('events', eventId, updated);
+
+      await fetchDatabase();
+      return newReg;
     } catch (e) {
       console.error(e);
     }
@@ -463,18 +614,22 @@ export default function App() {
   const handleDeleteEvent = async (id: string) => {
     if (!userEmail) return false;
     try {
-      const res = await fetch(`/api/events/${id}?userEmail=${encodeURIComponent(userEmail)}`, {
-        method: 'DELETE',
-        headers: { 
-          'Content-Type': 'application/json',
-          'user-email': userEmail
-        },
-        body: JSON.stringify({ userEmail })
-      });
-      if (res.ok) {
-        await fetchDatabase();
-        return true;
-      }
+      const matched = db?.events?.find(e => e.id === id);
+      await deleteFirestoreDoc('events', id);
+
+      // Log
+      const logId = 'log_' + Date.now();
+      const logData = {
+        id: logId,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        action: 'ইভেন্ট অপসারিত',
+        user: userEmail,
+        details: `"${matched?.title || id}" ইভেন্ট মুছে ফেলা হয়েছে।`
+      };
+      await saveFirestoreDoc('logs', logId, logData);
+
+      await fetchDatabase();
+      return true;
     } catch (e) {
       console.error(e);
     }
@@ -484,15 +639,28 @@ export default function App() {
   const handleAddBook = async (book: any) => {
     if (!userEmail) return false;
     try {
-      const res = await fetch('/api/books', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ book, userEmail })
-      });
-      if (res.ok) {
-        await fetchDatabase();
-        return true;
-      }
+      const id = 'book_' + Date.now();
+      const item = {
+        ...book,
+        id,
+        downloadCount: 0,
+        date: new Date().toISOString().split('T')[0]
+      };
+      await saveFirestoreDoc('books', id, item);
+
+      // Log
+      const logId = 'log_' + Date.now();
+      const logData = {
+        id: logId,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        action: 'প্রকাশনা সংগ্রহশালায় বই সংযুক্ত',
+        user: userEmail,
+        details: `"${book.title}" পুস্তিকা প্রকাশনা লাইব্রেরিতে সংযোজন করা হয়েছে।`
+      };
+      await saveFirestoreDoc('logs', logId, logData);
+
+      await fetchDatabase();
+      return true;
     } catch (e) {
       console.error(e);
     }
@@ -501,13 +669,14 @@ export default function App() {
 
   const handleDownloadBook = async (bookId: string) => {
     try {
-      const res = await fetch(`/api/books/${bookId}/download`, {
-        method: 'POST'
-      });
-      if (res.ok) {
-        await fetchDatabase();
-        return true;
-      }
+      const matched = db?.books?.find(b => b.id === bookId);
+      if (!matched) return false;
+
+      const updated = { ...matched, downloadCount: (matched.downloadCount || 0) + 1 };
+      await saveFirestoreDoc('books', bookId, updated);
+
+      await fetchDatabase();
+      return true;
     } catch (e) {
       console.error(e);
     }
@@ -517,18 +686,22 @@ export default function App() {
   const handleDeleteBook = async (id: string) => {
     if (!userEmail) return false;
     try {
-      const res = await fetch(`/api/books/${id}?userEmail=${encodeURIComponent(userEmail)}`, {
-        method: 'DELETE',
-        headers: { 
-          'Content-Type': 'application/json',
-          'user-email': userEmail
-        },
-        body: JSON.stringify({ userEmail })
-      });
-      if (res.ok) {
-        await fetchDatabase();
-        return true;
-      }
+      const matched = db?.books?.find(b => b.id === id);
+      await deleteFirestoreDoc('books', id);
+
+      // Log
+      const logId = 'log_' + Date.now();
+      const logData = {
+        id: logId,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        action: 'প্রকাশনা অপসারিত',
+        user: userEmail,
+        details: `"${matched?.title || id}" প্রকাশনাটি মুছে ফেলা হয়েছে।`
+      };
+      await saveFirestoreDoc('logs', logId, logData);
+
+      await fetchDatabase();
+      return true;
     } catch (e) {
       console.error(e);
     }
@@ -538,15 +711,27 @@ export default function App() {
   const handleAddCircular = async (circular: any) => {
     if (!userEmail) return false;
     try {
-      const res = await fetch('/api/circulars', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ circular, userEmail })
-      });
-      if (res.ok) {
-        await fetchDatabase();
-        return true;
-      }
+      const id = 'circ_' + Date.now();
+      const item = {
+        ...circular,
+        id,
+        date: new Date().toISOString().split('T')[0]
+      };
+      await saveFirestoreDoc('circulars', id, item);
+
+      // Log
+      const logId = 'log_' + Date.now();
+      const logData = {
+        id: logId,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        action: 'সাংগঠনিক সার্কুলার প্রকাশ',
+        user: userEmail,
+        details: `"${circular.title}" শিরোনামে সাংগঠনিক সার্কুলার জারি করা হয়েছে।`
+      };
+      await saveFirestoreDoc('logs', logId, logData);
+
+      await fetchDatabase();
+      return true;
     } catch (e) {
       console.error(e);
     }
@@ -556,18 +741,22 @@ export default function App() {
   const handleDeleteCircular = async (id: string) => {
     if (!userEmail) return false;
     try {
-      const res = await fetch(`/api/circulars/${id}?userEmail=${encodeURIComponent(userEmail)}`, {
-        method: 'DELETE',
-        headers: { 
-          'Content-Type': 'application/json',
-          'user-email': userEmail
-        },
-        body: JSON.stringify({ userEmail })
-      });
-      if (res.ok) {
-        await fetchDatabase();
-        return true;
-      }
+      const matched = db?.circulars?.find(c => c.id === id);
+      await deleteFirestoreDoc('circulars', id);
+
+      // Log
+      const logId = 'log_' + Date.now();
+      const logData = {
+        id: logId,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        action: 'সার্কুলার অপসারিত',
+        user: userEmail,
+        details: `"${matched?.title || id}" বিজ্ঞপ্তি বা সার্কুলার মুছে ফেলা হয়েছে।`
+      };
+      await saveFirestoreDoc('logs', logId, logData);
+
+      await fetchDatabase();
+      return true;
     } catch (e) {
       console.error(e);
     }
@@ -577,15 +766,23 @@ export default function App() {
   const handleEditBook = async (id: string, book: any) => {
     if (!userEmail) return false;
     try {
-      const res = await fetch(`/api/books/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ book, userEmail })
-      });
-      if (res.ok) {
-        await fetchDatabase();
-        return true;
-      }
+      const matched = db?.books?.find(b => b.id === id);
+      const updated = { ...matched, ...book, id };
+      await saveFirestoreDoc('books', id, updated);
+
+      // Log
+      const logId = 'log_' + Date.now();
+      const logData = {
+        id: logId,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        action: 'প্রকাশনা সম্পাদিত',
+        user: userEmail,
+        details: `"${updated.title}" বইটি মডিফাই করা হয়েছে।`
+      };
+      await saveFirestoreDoc('logs', logId, logData);
+
+      await fetchDatabase();
+      return true;
     } catch (e) {
       console.error(e);
     }
@@ -595,15 +792,23 @@ export default function App() {
   const handleEditCircular = async (id: string, circular: any) => {
     if (!userEmail) return false;
     try {
-      const res = await fetch(`/api/circulars/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ circular, userEmail })
-      });
-      if (res.ok) {
-        await fetchDatabase();
-        return true;
-      }
+      const matched = db?.circulars?.find(c => c.id === id);
+      const updated = { ...matched, ...circular, id };
+      await saveFirestoreDoc('circulars', id, updated);
+
+      // Log
+      const logId = 'log_' + Date.now();
+      const logData = {
+        id: logId,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        action: 'সার্কুলার সম্পাদিত',
+        user: userEmail,
+        details: `"${updated.title}" সার্কুলার সংশোধন করা হয়েছে।`
+      };
+      await saveFirestoreDoc('logs', logId, logData);
+
+      await fetchDatabase();
+      return true;
     } catch (e) {
       console.error(e);
     }
@@ -613,15 +818,27 @@ export default function App() {
   const handleAddGallery = async (item: any) => {
     if (!userEmail) return false;
     try {
-      const res = await fetch('/api/gallery', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item, userEmail })
-      });
-      if (res.ok) {
-        await fetchDatabase();
-        return true;
-      }
+      const id = 'gallery_' + Date.now();
+      const document = {
+        ...item,
+        id,
+        date: new Date().toISOString().split('T')[0]
+      };
+      await saveFirestoreDoc('gallery', id, document);
+
+      // Log
+      const logId = 'log_' + Date.now();
+      const logData = {
+        id: logId,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        action: 'মিডিয়া গ্যালারি সংযুক্তি',
+        user: userEmail,
+        details: `"${item.title}" অ্যালবাম ছবি বা ইনফোগ্রাফিক গ্যালারিতে সংযোজন করা হয়েছে।`
+      };
+      await saveFirestoreDoc('logs', logId, logData);
+
+      await fetchDatabase();
+      return true;
     } catch (e) {
       console.error(e);
     }
@@ -631,18 +848,22 @@ export default function App() {
   const handleDeleteGallery = async (id: string) => {
     if (!userEmail) return false;
     try {
-      const res = await fetch(`/api/gallery/${id}?userEmail=${encodeURIComponent(userEmail)}`, {
-        method: 'DELETE',
-        headers: { 
-          'Content-Type': 'application/json',
-          'user-email': userEmail
-        },
-        body: JSON.stringify({ userEmail })
-      });
-      if (res.ok) {
-        await fetchDatabase();
-        return true;
-      }
+      const matched = db?.gallery?.find(g => g.id === id);
+      await deleteFirestoreDoc('gallery', id);
+
+      // Log
+      const logId = 'log_' + Date.now();
+      const logData = {
+        id: logId,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        action: 'মিডিয়া গ্যালারি চিত্র অপসারিত',
+        user: userEmail,
+        details: `"${matched?.title || id}" ফাইলটি গ্যালারি থেকে মুছে ফেলা হয়েছে।`
+      };
+      await saveFirestoreDoc('logs', logId, logData);
+
+      await fetchDatabase();
+      return true;
     } catch (e) {
       console.error(e);
     }
@@ -651,16 +872,17 @@ export default function App() {
 
   const handleRegisterMember = async (registration: any) => {
     try {
-      const res = await fetch('/api/memberships', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ registration })
-      });
-      if (res.ok) {
-        const added = await res.json();
-        await fetchDatabase();
-        return added;
-      }
+      const id = 'member_' + Date.now();
+      const newReg = {
+        ...registration,
+        id,
+        status: 'pending' as const,
+        appliedAt: new Date().toISOString().replace('T', ' ').substring(0, 19)
+      };
+      await saveFirestoreDoc('memberships', id, newReg);
+
+      await fetchDatabase();
+      return newReg;
     } catch (e) {
       console.error(e);
     }
@@ -670,12 +892,26 @@ export default function App() {
   const handleVerifyMember = async (id: string, status: 'verified' | 'rejected') => {
     if (!userEmail) return false;
     try {
-      const res = await fetch(`/api/memberships/${id}/verify`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, userEmail })
-      });
-      if (res.ok) {
+      const matched = db?.memberships?.find(m => m.id === id);
+      if (matched) {
+        const updated = {
+          ...matched,
+          status,
+          verifiedAt: new Date().toISOString().replace('T', ' ').substring(0, 19)
+        };
+        await saveFirestoreDoc('memberships', id, updated);
+
+        // Log member application verify
+        const logId = 'log_' + Date.now();
+        const logData = {
+          id: logId,
+          timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+          action: 'সদস্য আবেদন যাচাই',
+          user: userEmail,
+          details: `${matched.name} কমরেডের মেম্বারশিপ আবেদন ${status === 'verified' ? 'অনুমোদিত' : 'প্রত্যাখ্যাত'} করা হয়েছে।`
+        };
+        await saveFirestoreDoc('logs', logId, logData);
+
         await fetchDatabase();
         return true;
       }
@@ -688,18 +924,22 @@ export default function App() {
   const handleDeleteMember = async (id: string) => {
     if (!userEmail) return false;
     try {
-      const res = await fetch(`/api/memberships/${id}?userEmail=${encodeURIComponent(userEmail)}`, {
-        method: 'DELETE',
-        headers: { 
-          'Content-Type': 'application/json',
-          'user-email': userEmail
-        },
-        body: JSON.stringify({ userEmail })
-      });
-      if (res.ok) {
-        await fetchDatabase();
-        return true;
-      }
+      const matched = db?.memberships?.find(m => m.id === id);
+      await deleteFirestoreDoc('memberships', id);
+
+      // Log
+      const logId = 'log_' + Date.now();
+      const logData = {
+        id: logId,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        action: 'সদস্য পদ বাতিল/অপসারণ',
+        user: userEmail,
+        details: `${matched?.name || id} কমরেডের তথ্য ডাটাবেজ থেকে মুছে দেওয়া হয়েছে।`
+      };
+      await saveFirestoreDoc('logs', logId, logData);
+
+      await fetchDatabase();
+      return true;
     } catch (e) {
       console.error(e);
     }
@@ -737,7 +977,7 @@ export default function App() {
             blogs={db.blogs}
             onAddComment={handleAddComment}
             userEmail={userEmail}
-            onRefresh={fetchDatabase}
+            onRefresh={() => fetchDatabase(true)}
             globalSearchQuery={globalSearchQuery}
             setGlobalSearchQuery={setGlobalSearchQuery}
           />
@@ -836,6 +1076,7 @@ export default function App() {
             onDeleteMember={handleDeleteMember}
             onAddInvitation={handleAddInvitation}
             onInviteAction={handleInviteAction}
+            onDeleteInvitation={handleDeleteInvitation}
           />
         );
       default:
@@ -867,6 +1108,9 @@ export default function App() {
         globalSearchQuery={globalSearchQuery}
         setGlobalSearchQuery={setGlobalSearchQuery}
         memberships={db ? db.memberships : []}
+        invitations={db ? db.invitations : []}
+        onInviteAction={handleInviteAction}
+        onRegisterMember={handleRegisterMember}
       />
 
       {/* Breaking news alerts ticker matching dynamic options */}

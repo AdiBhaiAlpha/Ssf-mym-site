@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, Tag, MessageSquare, Clock, User, ArrowLeft, RefreshCw, Send, Check, Share2, Facebook, Twitter, Link } from 'lucide-react';
 import { News, Blog, Comment } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
+import { saveFirestoreDoc } from '../firebase';
 
 interface NewsBlogSectionProps {
   news: News[];
@@ -29,9 +30,11 @@ export default function NewsBlogSection({
   const [selectedBlog, setSelectedBlog] = useState<Blog | null>(null);
   const [scrollPercent, setScrollPercent] = useState(0);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedFeedId, setCopiedFeedId] = useState<string | null>(null);
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(window.location.href);
+    const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '';
+    navigator.clipboard.writeText(shareUrl || window.location.href);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
@@ -173,7 +176,7 @@ export default function NewsBlogSection({
                 <span>শেয়ার করুন:</span>
               </span>
               <a 
-                href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`}
+                href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '')}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-[#1877F2] hover:bg-[#166FE5] text-white rounded font-bold transition-all shadow-xs"
@@ -182,7 +185,7 @@ export default function NewsBlogSection({
                 <span>Facebook</span>
               </a>
               <a 
-                href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(selectedNews.title)}&url=${encodeURIComponent(window.location.href)}`}
+                href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(selectedNews.title)}&url=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '')}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-[#1DA1F2] hover:bg-[#1a91da] text-white rounded font-bold transition-all shadow-xs"
@@ -191,7 +194,7 @@ export default function NewsBlogSection({
                 <span>Twitter / X</span>
               </a>
               <a 
-                href={`https://api.whatsapp.com/send?text=${encodeURIComponent(selectedNews.title + ' ' + window.location.href)}`}
+                href={`https://api.whatsapp.com/send?text=${encodeURIComponent(selectedNews.title + ' ' + (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : ''))}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-[#25D366] hover:bg-[#20ba5a] text-white rounded font-bold transition-all shadow-xs"
@@ -308,7 +311,7 @@ export default function NewsBlogSection({
                 <span>শেয়ার করুন:</span>
               </span>
               <a 
-                href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`}
+                href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '')}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-[#1877F2] hover:bg-[#166FE5] text-white rounded font-bold transition-all shadow-xs"
@@ -317,7 +320,7 @@ export default function NewsBlogSection({
                 <span>Facebook</span>
               </a>
               <a 
-                href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(selectedBlog.title)}&url=${encodeURIComponent(window.location.href)}`}
+                href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(selectedBlog.title)}&url=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '')}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-[#1DA1F2] hover:bg-[#1a91da] text-white rounded font-bold transition-all shadow-xs"
@@ -326,7 +329,7 @@ export default function NewsBlogSection({
                 <span>Twitter / X</span>
               </a>
               <a 
-                href={`https://api.whatsapp.com/send?text=${encodeURIComponent(selectedBlog.title + ' ' + window.location.href)}`}
+                href={`https://api.whatsapp.com/send?text=${encodeURIComponent(selectedBlog.title + ' ' + (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : ''))}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-[#25D366] hover:bg-[#20ba5a] text-white rounded font-bold transition-all shadow-xs"
@@ -551,11 +554,19 @@ export default function NewsBlogSection({
                     layout
                     key={art.id}
                     onClick={() => {
-                      art.views = (art.views || 0) + 1;
+                      const newViews = (art.views || 0) + 1;
+                      art.views = newViews;
                       setSelectedNews(art);
-                      fetch(`/api/news/${art.id}/view`, { method: 'POST' })
+                      
+                      // Serverless dynamic fallback
+                      saveFirestoreDoc('news', art.id, { ...art, views: newViews })
                         .then(() => onRefresh?.())
-                        .catch(err => console.error(err));
+                        .catch(err => {
+                          console.error('Firestore view tracking failed, trying api fallback:', err);
+                          fetch(`/api/news/${art.id}/view`, { method: 'POST' })
+                            .then(() => onRefresh?.())
+                            .catch(e => console.error(e));
+                        });
                     }}
                     className="group flex flex-col bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded-sm overflow-hidden hover:border-rose-600/50 transition duration-300 cursor-pointer shadow-xs"
                   >
@@ -584,6 +595,54 @@ export default function NewsBlogSection({
                         <span>প্রতিবেদক: {art.author}</span>
                         <span>পঠিত: {((art.views || 0) * 10)}</span>
                       </div>
+
+                      <div className="mt-3.5 pt-3 border-t border-zinc-100/60 dark:border-zinc-900/60 flex items-center justify-between text-[10px]" onClick={(e) => e.stopPropagation()}>
+                        <span className="flex items-center gap-1 font-bold text-[9px] text-zinc-500">
+                          <Share2 className="w-3 h-3 text-rose-650" />
+                          <span>শেয়ারঃ</span>
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <a
+                            href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 bg-zinc-50 hover:bg-[#1877F2]/10 text-zinc-500 hover:text-[#1877F2] rounded border border-zinc-200/50 dark:bg-zinc-900/40 dark:border-zinc-800/40 transition"
+                            title="ফেসবুকে শেয়ার"
+                          >
+                            <Facebook className="w-3 h-3" />
+                          </a>
+                          <a
+                            href={`https://twitter.com/intent/tweet?text=${encodeURIComponent('সংবাদঃ ' + art.title + ' ')}&url=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 bg-zinc-50 hover:bg-[#1DA1F2]/10 text-zinc-500 hover:text-[#1DA1F2] rounded border border-zinc-200/50 dark:bg-zinc-900/40 dark:border-zinc-800/40 transition"
+                            title="X-এ শেয়ার"
+                          >
+                            <Twitter className="w-3 h-3" />
+                          </a>
+                          <a
+                            href={`https://api.whatsapp.com/send?text=${encodeURIComponent('সংবাদঃ ' + art.title + '\nলিংকঃ ' + (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : ''))}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 bg-zinc-50 hover:bg-[#25D366]/10 text-zinc-500 hover:text-[#25D366] rounded border border-zinc-200/50 dark:bg-zinc-900/45 dark:border-zinc-800/40 transition"
+                            title="হোয়াটসঅ্যাপে শেয়ার"
+                          >
+                            <MessageSquare className="w-3 h-3" />
+                          </a>
+                          <button
+                            onClick={() => {
+                              const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '';
+                              navigator.clipboard.writeText(shareUrl);
+                              setCopiedFeedId(art.id);
+                              setTimeout(() => setCopiedFeedId(null), 2000);
+                            }}
+                            className="p-1.5 bg-zinc-50 hover:bg-rose-150 text-zinc-500 hover:text-rose-600 rounded border border-zinc-200/50 dark:bg-zinc-900/45 dark:border-zinc-800/40 transition cursor-pointer"
+                            title="লিংক কপি"
+                          >
+                            {copiedFeedId === art.id ? <Check className="w-3 h-3 text-emerald-600 font-bold" /> : <Link className="w-3 h-3" />}
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </motion.article>
                 ))
@@ -596,11 +655,19 @@ export default function NewsBlogSection({
                     layout
                     key={post.id}
                     onClick={() => {
-                      post.views = (post.views || 0) + 1;
+                      const newViews = (post.views || 0) + 1;
+                      post.views = newViews;
                       setSelectedBlog(post);
-                      fetch(`/api/blogs/${post.id}/view`, { method: 'POST' })
+                      
+                      // Serverless dynamic fallback
+                      saveFirestoreDoc('blogs', post.id, { ...post, views: newViews })
                         .then(() => onRefresh?.())
-                        .catch(err => console.error(err));
+                        .catch(err => {
+                          console.error('Firestore view tracking failed, trying api fallback:', err);
+                          fetch(`/api/blogs/${post.id}/view`, { method: 'POST' })
+                            .then(() => onRefresh?.())
+                            .catch(e => console.error(e));
+                        });
                     }}
                     className="group flex flex-col bg-white dark:bg-zinc-950 border border-zinc-100 dark:border-zinc-900 rounded-sm overflow-hidden hover:border-emerald-600/40 transition duration-300 cursor-pointer shadow-xs"
                   >
@@ -636,6 +703,54 @@ export default function NewsBlogSection({
                       <div className="mt-auto pt-4 border-t border-zinc-100 dark:border-zinc-900 flex justify-between items-center text-[10px] text-zinc-400">
                         <span className="truncate">লেখক: {post.author}</span>
                         <span>মতামত: {(post.comments || []).filter(c => c.approved).length}টি</span>
+                      </div>
+
+                      <div className="mt-3.5 pt-3 border-t border-zinc-100/60 dark:border-zinc-900/60 flex items-center justify-between text-[10px]" onClick={(e) => e.stopPropagation()}>
+                        <span className="flex items-center gap-1 font-bold text-[9px] text-zinc-500">
+                          <Share2 className="w-3 h-3 text-emerald-650" />
+                          <span>শেয়ারঃ</span>
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <a
+                            href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 bg-zinc-50 hover:bg-[#1877F2]/10 text-zinc-500 hover:text-[#1877F2] rounded border border-zinc-200/50 dark:bg-zinc-900/40 dark:border-zinc-800/40 transition"
+                            title="ফেসবুকে শেয়ার"
+                          >
+                            <Facebook className="w-3 h-3" />
+                          </a>
+                          <a
+                            href={`https://twitter.com/intent/tweet?text=${encodeURIComponent('নিবন্ধঃ ' + post.title + ' ')}&url=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 bg-zinc-50 hover:bg-[#1DA1F2]/10 text-zinc-500 hover:text-[#1DA1F2] rounded border border-zinc-200/50 dark:bg-zinc-900/40 dark:border-zinc-800/40 transition"
+                            title="X-এ শেয়ার"
+                          >
+                            <Twitter className="w-3 h-3" />
+                          </a>
+                          <a
+                            href={`https://api.whatsapp.com/send?text=${encodeURIComponent('নিবন্ধঃ ' + post.title + '\nলিংকঃ ' + (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : ''))}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 bg-zinc-50 hover:bg-[#25D366]/10 text-zinc-500 hover:text-[#25D366] rounded border border-zinc-200/50 dark:bg-zinc-900/45 dark:border-zinc-800/40 transition"
+                            title="হোয়াটসঅ্যাপে শেয়ার"
+                          >
+                            <MessageSquare className="w-3 h-3" />
+                          </a>
+                          <button
+                            onClick={() => {
+                              const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '';
+                              navigator.clipboard.writeText(shareUrl);
+                              setCopiedFeedId(post.id);
+                              setTimeout(() => setCopiedFeedId(null), 2000);
+                            }}
+                            className="p-1.5 bg-zinc-50 hover:bg-emerald-150 text-zinc-500 hover:text-emerald-600 rounded border border-zinc-200/50 dark:bg-zinc-900/45 dark:border-zinc-800/40 transition cursor-pointer"
+                            title="লিংক কপি"
+                          >
+                            {copiedFeedId === post.id ? <Check className="w-3 h-3 text-emerald-600 font-bold" /> : <Link className="w-3 h-3" />}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </motion.article>

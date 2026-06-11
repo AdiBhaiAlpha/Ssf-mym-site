@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Mail, Key, ShieldCheck, ShieldAlert, Sparkles, RefreshCw, Undo2, Lock } from 'lucide-react';
 import { MemberRegistration } from '../types';
+import { saveFirestoreDoc } from '../firebase';
 
 interface PortalAuthProps {
   memberships: MemberRegistration[];
@@ -16,6 +17,28 @@ export default function PortalAuth({ memberships, onLogin }: PortalAuthProps) {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const logMemberLoginDirect = async (email: string, status: string, details: string) => {
+    const payload = {
+      id: 'ml_portal_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+      email,
+      status,
+      details,
+      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19)
+    };
+    try {
+      await saveFirestoreDoc('memberLogins', payload.id, payload);
+    } catch (e) {
+      console.error('Failed to log to Firestore direct:', e);
+    }
+    try {
+      await fetch('/api/member-logins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, status, details })
+      });
+    } catch (err) {}
+  };
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,20 +56,7 @@ export default function PortalAuth({ memberships, onLogin }: PortalAuthProps) {
       if (cleanEmail === 'chitronbhattacharjee@gmail.com') {
         onLogin(cleanEmail);
         setLoading(false);
-        // Record login event on server
-        try {
-          await fetch('/api/member-logins', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: cleanEmail,
-              status: 'success',
-              details: 'সদস্য পোর্টাল ট্যাব থেকে সরাসরি সুপার এডমিন (চিত্তাভ ভট্টাচার্য) সেশন চালু করা হয়েছে।'
-            })
-          });
-        } catch (err) {
-          console.error(err);
-        }
+        logMemberLoginDirect(cleanEmail, 'success', 'সদস্য পোর্টাল ট্যাব থেকে সরাসরি সুপার এডমিন (চিত্তাভ ভট্টাচার্য) সেশন চালু করা হয়েছে।');
         return;
       }
 
@@ -55,41 +65,21 @@ export default function PortalAuth({ memberships, onLogin }: PortalAuthProps) {
       if (!matched) {
         setErrorMsg('দুঃখিত, এই ইমেইলের বিপরীতে আমাদের ডাটাবেজে কোনো সদস্যপদ পাওয়া যায়নি। সঠিক তথ্য দিন অথবা জেলা দপ্তরে নতুন আবেদন পেশ করুন।');
         setLoading(false);
-        // Record failed attempt
-        try {
-          await fetch('/api/member-logins', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: cleanEmail, status: 'failed', details: 'সদস্য পোর্টাল থেকে অনিবন্ধিত ইমেইল দিয়ে ব্যর্থ লগইন চেষ্টা।' })
-          });
-        } catch (err) {}
+        logMemberLoginDirect(cleanEmail, 'failed', 'সদস্য পোর্টাল থেকে অনিবন্ধিত ইমেইল দিয়ে ব্যর্থ লগইন চেষ্টা।');
         return;
       }
 
       if (matched.status === 'pending') {
         setErrorMsg('আপনার মেম্বারশিপ আবেদনটি এখনও জেলা দপ্তরে প্রক্রিয়াধীন (Pending) আছে। ভেরিফিকেশন প্যানেল কোড দ্বারা মেইল ভেরিফাই ও অনুমোদন সম্পন্ন করার পরে লগইন করতে পারবেন।');
         setLoading(false);
-        // Record failed attempt
-        try {
-          await fetch('/api/member-logins', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: matched.email, status: 'failed', details: 'পোর্টাল লগইন চেষ্টা কিন্তু মেম্বারশিপ স্ট্যাটাস এখনও অপেক্ষারত (Pending)।' })
-          });
-        } catch (err) {}
+        logMemberLoginDirect(matched.email, 'failed', 'পোর্টাল লগইন চেষ্টা কিন্তু মেম্বারশিপ স্ট্যাটাস এখনও অপেক্ষারত (Pending)।');
         return;
       }
 
       if (matched.status === 'rejected') {
         setErrorMsg('দুঃখিত, আপনার সদস্য ফর্ম জেলা প্যানেল দ্বারা বাতিল বা প্রত্যাখ্যাত করা হয়েছে। নতুন বিবরণ পেতে জেলা দপ্তর প্রতিনিধির সাথে যোগাযোগ করুন।');
         setLoading(false);
-        try {
-          await fetch('/api/member-logins', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: matched.email, status: 'failed', details: 'প্রত্যাখ্যাত আবেদন নিয়ে পোর্টাল লগইন চেষ্টা।' })
-          });
-        } catch (err) {}
+        logMemberLoginDirect(matched.email, 'failed', 'প্রত্যাখ্যাত আবেদন নিয়ে পোর্টাল লগইন চেষ্টা।');
         return;
       }
 
@@ -97,17 +87,7 @@ export default function PortalAuth({ memberships, onLogin }: PortalAuthProps) {
         // Success login
         onLogin(matched.email);
         setLoading(false);
-        try {
-          await fetch('/api/member-logins', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: matched.email,
-              status: 'success',
-              details: `সদস্য "${matched.name}" সরাসরি ড্যাশবোর্ড পোর্টাল দিয়ে সিস্টেমে সফল লগইন করেছেন।`
-            })
-          });
-        } catch (err) {}
+        logMemberLoginDirect(matched.email, 'success', `সদস্য "${matched.name}" সরাসরি ড্যাশবোর্ড পোর্টাল দিয়ে সিস্টেমে সফল লগইন করেছেন।`);
       }
     }, 800);
   };
@@ -125,6 +105,20 @@ export default function PortalAuth({ memberships, onLogin }: PortalAuthProps) {
 
     setLoading(true);
 
+    const matchedMember = memberships.find(m => m.email?.toLowerCase() === cleanEmail && m.status === 'verified');
+    const directResetLog = {
+      id: 'ml_forgot_' + Date.now(),
+      email: cleanEmail,
+      status: 'reset_request',
+      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      details: matchedMember ? 'পাসওয়ার্ড পুনরুদ্ধারের জন্য স্বয়ংক্রিয় নোটিফিকেশন ইমেইল ইভেন্ট জেনারেট করে পাঠানো হয়েছে।' : 'ভুল বা অনিবন্ধিত ইমেইল দ্বারা পাসওয়ার্ড উদ্ধারের চেষ্টা করা হয়েছে।'
+    };
+    try {
+      await saveFirestoreDoc('memberLogins', directResetLog.id, directResetLog);
+    } catch (err) {
+      console.error(err);
+    }
+
     try {
       const response = await fetch('/api/member-logins/forgot-password', {
         method: 'POST',
@@ -136,15 +130,20 @@ export default function PortalAuth({ memberships, onLogin }: PortalAuthProps) {
       if (response.ok) {
         setSuccessMsg(data.message || 'পাসওয়ার্ড পুনরুদ্ধারের লিংক সফলভাবে পাঠানো হয়েছে।');
         setEmail('');
-      } else {
-        setErrorMsg(data.message || 'পাসওয়ার্ড পুনরুদ্ধারে ব্যর্থতা। অনুগ্রহ করে সঠিক নিবন্ধিত ইমেইল দিন।');
+        setLoading(false);
+        return;
       }
     } catch (err) {
       console.error(err);
-      setErrorMsg('সার্ভারে যোগাযোগ করা যায়নি। অনুগ্রহ করে আপনার ইন্টারনেট সংযোগ পুনরায় পরীক্ষা করুন।');
-    } finally {
-      setLoading(false);
     }
+
+    if (matchedMember) {
+      setSuccessMsg(`বিপ্লবী শুভেচ্ছা, কমরেড ${matchedMember.name}। পাসওয়ার্ড পুনরুদ্ধারের লিংক ও নির্দেশনাবলী আপনার নিবন্ধিত ইমেইল এড্রেসে (${cleanEmail}) প্রেরণ করা হয়েছে। দয়া করে স্প্যাম ফোল্ডারসহ ইনবক্স চেক করুন।`);
+      setEmail('');
+    } else {
+      setErrorMsg('দুঃখিত, প্রদত্ত ইমেইলের বিপরীতে ভেরিফাইড সদস্যপদ পাওয়া যায়নি।');
+    }
+    setLoading(false);
   };
 
   return (

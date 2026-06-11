@@ -1012,7 +1012,7 @@ async function startServer() {
       id: 'invite_' + Date.now(),
       email: cleanEmail,
       role: role || 'admin',
-      status: 'pending',
+      status: 'pending' as 'pending' | 'accepted' | 'declined',
       invitedBy: invitedBy,
       timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19)
     };

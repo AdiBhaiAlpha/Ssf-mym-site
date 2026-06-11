@@ -1,0 +1,202 @@
+{
+  "entities": {
+    "News": {
+      "title": "News",
+      "description": "A news article entity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "excerpt": { "type": "string" },
+        "content": { "type": "string" },
+        "category": { "type": "string" },
+        "author": { "type": "string" },
+        "date": { "type": "string" },
+        "image": { "type": "string" },
+        "tags": { "type": "array" },
+        "status": { "type": "string" },
+        "isFeatured": { "type": "boolean" },
+        "views": { "type": "integer" }
+      }
+    },
+    "Blog": {
+      "title": "Blog",
+      "description": "A blog post entity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "excerpt": { "type": "string" },
+        "content": { "type": "string" },
+        "category": { "type": "string" },
+        "author": { "type": "string" },
+        "date": { "type": "string" },
+        "image": { "type": "string" },
+        "tags": { "type": "array" },
+        "status": { "type": "string" },
+        "views": { "type": "integer" },
+        "comments": { "type": "array" }
+      }
+    },
+    "Event": {
+      "title": "Event",
+      "description": "An event entity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "venue": { "type": "string" },
+        "image": { "type": "string" },
+        "status": { "type": "string" },
+        "registrants": { "type": "array" }
+      }
+    },
+    "Book": {
+      "title": "Book",
+      "description": "A book publication entity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "author": { "type": "string" },
+        "description": { "type": "string" },
+        "coverImage": { "type": "string" },
+        "type": { "type": "string" },
+        "pdfUrl": { "type": "string" },
+        "downloadCount": { "type": "integer" },
+        "date": { "type": "string" }
+      }
+    },
+    "Circular": {
+      "title": "Circular",
+      "description": "An official circular notice entity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "date": { "type": "string" },
+        "category": { "type": "string" }
+      }
+    },
+    "Gallery": {
+      "title": "Gallery",
+      "description": "A media gallery entity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "url": { "type": "string" },
+        "type": { "type": "string" },
+        "date": { "type": "string" }
+      }
+    },
+    "Membership": {
+      "title": "Membership",
+      "description": "A member registration entity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "mobile": { "type": "string" },
+        "email": { "type": "string" },
+        "institution": { "type": "string" },
+        "department": { "type": "string" },
+        "academicYear": { "type": "string" },
+        "address": { "type": "string" },
+        "dob": { "type": "string" },
+        "type": { "type": "string" },
+        "status": { "type": "string" },
+        "appliedAt": { "type": "string" }
+      }
+    },
+    "Log": {
+      "title": "Log",
+      "description": "An audit log entity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "action": { "type": "string" },
+        "user": { "type": "string" },
+        "details": { "type": "string" }
+      }
+    },
+    "Visit": {
+      "title": "Visit",
+      "description": "A page visit tracking entity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "page": { "type": "string" },
+        "views": { "type": "integer" },
+        "device": { "type": "string" }
+      }
+    },
+    "Organization": {
+      "title": "Organization",
+      "description": "An organization wing entity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nameEnglish": { "type": "string" },
+        "nameBangla": { "type": "string" },
+        "logo": { "type": "string" }
+      }
+    },
+    "MemberLogin": {
+      "title": "MemberLogin",
+      "description": "A member login activity entity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "status": { "type": "string" },
+        "details": { "type": "string" }
+      }
+    },
+    "Invitation": {
+      "title": "Invitation",
+      "description": "An admin invitation entity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string" },
+        "status": { "type": "string" },
+        "invitedBy": { "type": "string" },
+        "timestamp": { "type": "string" }
+      }
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Website customizable settings",
+      "type": "object",
+      "properties": {
+        "showHero": { "type": "boolean" },
+        "showBreakingNews": { "type": "boolean" },
+        "siteMaintenance": { "type": "boolean" }
+      }
+    }
+  },
+  "firestore": {
+    "/settings/{id}": { "schema": "Settings", "description": "Website settings collection" },
+    "/news/{id}": { "schema": "News", "description": "News articles collection" },
+    "/blogs/{id}": { "schema": "Blog", "description": "Blog posts and comments collection" },
+    "/events/{id}": { "schema": "Event", "description": "Organizational events collection" },
+    "/books/{id}": { "schema": "Book", "description": "Interactive library publication books" },
+    "/circulars/{id}": { "schema": "Circular", "description": "Notices and updates circulars" },
+    "/gallery/{id}": { "schema": "Gallery", "description": "A photo/poster media gallery" },
+    "/memberships/{id}": { "schema": "Membership", "description": "Member applications/registrations" },
+    "/logs/{id}": { "schema": "Log", "description": "Audit and administrative log collection" },
+    "/visits/{id}": { "schema": "Visit", "description": "Aggregated visitor and page pageVisits" },
+    "/organizations/{id}": { "schema": "Organization", "description": "Organizational wing details" },
+    "/memberLogins/{id}": { "schema": "MemberLogin", "description": "Recorded member account operations logs" },
+    "/invitations/{id}": { "schema": "Invitation", "description": "Assigned administrative moderator credentials" }
+  }
+}
