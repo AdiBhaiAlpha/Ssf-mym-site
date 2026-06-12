@@ -292,20 +292,30 @@ export default function AdminDashboard({
   const [dName, setDName] = React.useState('');
   const [dRole, setDRole] = React.useState('');
   const [dInst, setDInst] = React.useState('');
+  const [dMemberCode, setDMemberCode] = React.useState('');
+  const [dPhotoUrl, setDPhotoUrl] = React.useState('');
 
   const [eName, setEName] = React.useState('');
   const [eRole, setERole] = React.useState('কার্যকরী সদস্য');
   const [eInst, setEInst] = React.useState('');
+  const [eMemberCode, setEMemberCode] = React.useState('');
+  const [ePhotoUrl, setEPhotoUrl] = React.useState('');
 
   const [uUnitName, setUUnitName] = React.useState('');
   const [uLeadName1, setULeadName1] = React.useState('');
   const [uLeadRole1, setULeadRole1] = React.useState('');
+  const [uLead1MemberCode, setULead1MemberCode] = React.useState('');
+  const [uLead1PhotoUrl, setULead1PhotoUrl] = React.useState('');
   const [uLeadName2, setULeadName2] = React.useState('');
   const [uLeadRole2, setULeadRole2] = React.useState('');
+  const [uLead2MemberCode, setULead2MemberCode] = React.useState('');
+  const [uLead2PhotoUrl, setULead2PhotoUrl] = React.useState('');
 
   const [fName, setFName] = React.useState('');
   const [fDuration, setFDuration] = React.useState('');
   const [fContribution, setFContribution] = React.useState('');
+  const [fMemberCode, setFMemberCode] = React.useState('');
+  const [fPhotoUrl, setFPhotoUrl] = React.useState('');
 
   const handleUpdateLogo = (id: string, value: string) => {
     setOrgLogos(prev => ({ ...prev, [id]: value }));
@@ -1186,10 +1196,10 @@ export default function AdminDashboard({
                             key={sub.id}
                             type="button"
                             onClick={() => setLeadersSubTab(sub.id as any)}
-                            className={`px-3 py-1.5 text-xs font-bold font-sans rounded transition-all cursor-pointer ${
+                            className={`px-3 py-1.5 rounded text-xs font-bold leading-none cursor-pointer transition-all ${
                               leadersSubTab === sub.id
-                                ? 'bg-rose-600 text-white shadow-xs'
-                                : 'bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-350 hover:bg-zinc-50'
+                                ? 'bg-rose-600 text-white'
+                                : 'bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-650 dark:text-zinc-400 hover:bg-zinc-150 dark:hover:bg-zinc-850'
                             }`}
                           >
                             {sub.label}
@@ -1197,21 +1207,22 @@ export default function AdminDashboard({
                         ))}
                       </div>
 
-                      {/* District Committee section */}
+                      {/* District Committee Section */}
                       {leadersSubTab === 'district' && (
                         <div className="space-y-4 font-sans">
                           <div className="space-y-2 max-h-52 overflow-y-auto border border-zinc-200 dark:border-zinc-800 p-2.5 rounded bg-white dark:bg-zinc-950">
                             {(db.settings.leadersDistrict || []).map((leader: any, idx: number) => (
-                              <div key={idx} className="flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/60 p-2 rounded border border-zinc-100 dark:border-zinc-850">
+                              <div key={idx} className="flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/60 p-2 rounded border border-zinc-100 dark:border-zinc-855">
                                 <div className="text-xs">
                                   <span className="font-bold text-zinc-800 dark:text-zinc-200">{leader.name}</span>
-                                  <span className="text-rose-650 dark:text-rose-450 text-[10px] ml-2 font-semibold">({leader.role})</span>
-                                  <span className="text-zinc-500 text-[10px] ml-2 block sm:inline">• {leader.inst}</span>
+                                  {leader.role && <span className="text-rose-650 dark:text-rose-455 text-[10px] ml-2 font-semibold">({leader.role})</span>}
+                                  {leader.inst && <span className="text-zinc-500 text-[10px] ml-2 block sm:inline">• {leader.inst}</span>}
+                                  {leader.memberCode && <span className="text-[10px] text-zinc-400 font-mono ml-2 block sm:inline">[কোড: {leader.memberCode}]</span>}
                                 </div>
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    const updated = (db.settings.leadersDistrict || []).filter((_, i) => i !== idx);
+                                    const updated = (db.settings.leadersDistrict || []).filter((_: any, i: number) => i !== idx);
                                     handleSaveDistrict(updated);
                                   }}
                                   disabled={isSavingLeaders}
@@ -1224,40 +1235,62 @@ export default function AdminDashboard({
                             ))}
                           </div>
 
-                          <div className="p-3.5 border border-zinc-200 dark:border-zinc-800 rounded bg-white dark:bg-zinc-950 space-y-3">
-                            <h5 className="text-xs font-bold text-rose-700 dark:text-rose-450">নতুন জেলা সংসদ নেতা যুক্ত করুন</h5>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                          <div className="p-3.5 border border-zinc-200 dark:border-zinc-800 rounded bg-white dark:bg-zinc-955 space-y-3">
+                            <h5 className="text-xs font-bold text-rose-700 dark:text-rose-455">নতুন জেলা সংসদ নেতা যুক্ত করুন</h5>
+                            <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5">
                               <input
                                 type="text"
-                                className="text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-950 dark:text-white"
+                                className="text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-955 dark:text-white"
                                 placeholder="নেতার নাম"
                                 value={dName}
                                 onChange={(e) => setDName(e.target.value)}
                               />
                               <input
                                 type="text"
-                                className="text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-950 dark:text-white"
+                                className="text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-955 dark:text-white"
                                 placeholder="পদবী (যেমনঃ সভাপতি)"
                                 value={dRole}
                                 onChange={(e) => setDRole(e.target.value)}
                               />
                               <input
                                 type="text"
-                                className="text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-950 dark:text-white"
+                                className="text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-955 dark:text-white"
                                 placeholder="প্রতিষ্ঠান (যেমনঃ আনন্দ মোহন কলেজ)"
                                 value={dInst}
                                 onChange={(e) => setDInst(e.target.value)}
+                              />
+                              <input
+                                type="text"
+                                className="text-xs border border-zinc-150 dark:border-zinc-800 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-955 dark:text-white font-mono"
+                                placeholder="মেম্বার কোড (ঐচ্ছিক)"
+                                value={dMemberCode}
+                                onChange={(e) => setDMemberCode(e.target.value)}
+                              />
+                              <input
+                                type="text"
+                                className="text-xs border border-zinc-150 dark:border-zinc-800 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-955 dark:text-white"
+                                placeholder="ছবির ইউআরএল (ঐচ্ছিক)"
+                                value={dPhotoUrl}
+                                onChange={(e) => setDPhotoUrl(e.target.value)}
                               />
                             </div>
                             <button
                               type="button"
                               onClick={() => {
                                 if (!dName || !dRole || !dInst) return;
-                                const updated = [...(db.settings.leadersDistrict || []), { name: dName, role: dRole, inst: dInst }];
+                                const updated = [...(db.settings.leadersDistrict || []), {
+                                  name: dName,
+                                  role: dRole,
+                                  inst: dInst,
+                                  memberCode: dMemberCode ? dMemberCode.trim() : undefined,
+                                  photoUrl: dPhotoUrl ? dPhotoUrl.trim() : undefined
+                                }];
                                 handleSaveDistrict(updated);
                                 setDName('');
                                 setDRole('');
                                 setDInst('');
+                                setDMemberCode('');
+                                setDPhotoUrl('');
                               }}
                               disabled={isSavingLeaders || !dName || !dRole}
                               className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-bold cursor-pointer"
@@ -1276,13 +1309,14 @@ export default function AdminDashboard({
                               <div key={idx} className="flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/60 p-2 rounded border border-zinc-100 dark:border-zinc-850">
                                 <div className="text-xs">
                                   <span className="font-bold text-zinc-800 dark:text-zinc-200">{leader.name}</span>
-                                  <span className="text-rose-600 text-[10px] ml-2 font-semibold">({leader.role})</span>
-                                  <span className="text-zinc-500 text-[10px] ml-2 block sm:inline">• {leader.inst}</span>
+                                  {leader.role && <span className="text-rose-650 dark:text-rose-455 text-[10px] ml-2 font-semibold">({leader.role})</span>}
+                                  {leader.inst && <span className="text-zinc-500 text-[10px] ml-2 block sm:inline">• {leader.inst}</span>}
+                                  {leader.memberCode && <span className="text-[10px] text-zinc-400 font-mono ml-2 block sm:inline">[কোড: {leader.memberCode}]</span>}
                                 </div>
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    const updated = (db.settings.leadersExecutive || []).filter((_, i) => i !== idx);
+                                    const updated = (db.settings.leadersExecutive || []).filter((_: any, i: number) => i !== idx);
                                     handleSaveExecutive(updated);
                                   }}
                                   disabled={isSavingLeaders}
@@ -1295,32 +1329,63 @@ export default function AdminDashboard({
                             ))}
                           </div>
 
-                          <div className="p-3.5 border border-zinc-200 dark:border-zinc-800 rounded bg-white dark:bg-zinc-950 space-y-3">
+                          <div className="p-3.5 border border-zinc-200 dark:border-zinc-808 rounded bg-white dark:bg-zinc-950 space-y-3">
                             <h5 className="text-xs font-bold text-rose-700 dark:text-rose-455">নতুন কার্যকরী সদস্য যুক্ত করুন</h5>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                               <input
                                 type="text"
-                                className="text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-950 dark:text-white"
-                                placeholder="নাম"
+                                className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-955 dark:text-white"
+                                placeholder="সদস্যের নাম"
                                 value={eName}
                                 onChange={(e) => setEName(e.target.value)}
                               />
                               <input
                                 type="text"
-                                className="text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-950 dark:text-white"
-                                placeholder="প্রতিষ্ঠানের নাম"
+                                className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-955 dark:text-white"
+                                placeholder="পদবী (যেমনঃ কার্যকরী সদস্য)"
+                                value={eRole}
+                                onChange={(e) => setERole(e.target.value)}
+                              />
+                              <input
+                                type="text"
+                                className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-955 dark:text-white"
+                                placeholder="শিক্ষা প্রতিষ্ঠান (যেমনঃ আনন্দ মোহন কলেজ)"
                                 value={eInst}
                                 onChange={(e) => setEInst(e.target.value)}
+                              />
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              <input
+                                type="text"
+                                className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-955 dark:text-white font-mono"
+                                placeholder="মেম্বার কোড (ঐচ্ছিক)"
+                                value={eMemberCode}
+                                onChange={(e) => setEMemberCode(e.target.value)}
+                              />
+                              <input
+                                type="text"
+                                className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-955 dark:text-white"
+                                placeholder="ছবির ইউআরএল (ঐচ্ছিক)"
+                                value={ePhotoUrl}
+                                onChange={(e) => setEPhotoUrl(e.target.value)}
                               />
                             </div>
                             <button
                               type="button"
                               onClick={() => {
                                 if (!eName || !eInst) return;
-                                const updated = [...(db.settings.leadersExecutive || []), { name: eName, role: eRole, inst: eInst }];
+                                const updated = [...(db.settings.leadersExecutive || []), { 
+                                  name: eName, 
+                                  role: eRole || 'কার্যকরী সদস্য', 
+                                  inst: eInst,
+                                  memberCode: eMemberCode ? eMemberCode.trim() : undefined,
+                                  photoUrl: ePhotoUrl ? ePhotoUrl.trim() : undefined
+                                }];
                                 handleSaveExecutive(updated);
                                 setEName('');
                                 setEInst('');
+                                setEMemberCode('');
+                                setEPhotoUrl('');
                               }}
                               disabled={isSavingLeaders || !eName || !eInst}
                               className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-bold cursor-pointer"
@@ -1334,11 +1399,11 @@ export default function AdminDashboard({
                       {/* Unit Committee section */}
                       {leadersSubTab === 'units' && (
                         <div className="space-y-4 font-sans">
-                          <div className="space-y-3 max-h-60 overflow-y-auto border border-zinc-200 dark:border-zinc-800 p-2.5 rounded bg-white dark:bg-zinc-950">
-                            {(db.settings.leadersUnits || []).map((unit: any, idx: number) => (
-                              <div key={idx} className="bg-zinc-50 dark:bg-zinc-900/40 p-3 rounded border border-zinc-150 dark:border-zinc-800 space-y-2">
+                          <div className="space-y-3 max-h-60 overflow-y-auto border border-zinc-200 dark:border-zinc-808 p-2.5 rounded bg-white dark:bg-zinc-950">
+                            {(db.settings.leadersUnits || []).map((unit, idx) => (
+                              <div key={idx} className="bg-zinc-50 dark:bg-zinc-900/40 p-3 rounded border border-zinc-150 dark:border-zinc-808 space-y-2">
                                 <div className="flex justify-between items-center border-b border-zinc-250 dark:border-zinc-800 pb-1.5">
-                                  <h6 className="text-xs font-bold text-rose-700 dark:text-rose-400">{unit.unitName}</h6>
+                                  <h6 className="text-xs font-bold text-rose-700 dark:text-rose-455">{unit.unitName}</h6>
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -1353,9 +1418,10 @@ export default function AdminDashboard({
                                   </button>
                                 </div>
                                 <div className="flex flex-wrap gap-2 text-[11px]">
-                                  {(unit.leaders || []).map((lead: any, lIdx: number) => (
+                                  {(unit.leaders || []).map((lead, lIdx) => (
                                     <span key={lIdx} className="bg-white dark:bg-zinc-955 border border-zinc-150 dark:border-zinc-850 px-2.5 py-1 rounded">
                                       <strong className="text-zinc-800 dark:text-white">{lead.name}:</strong> <span className="text-zinc-500">{lead.role}</span>
+                                      {lead.memberCode && <span className="text-[9px] text-zinc-400 font-mono ml-1">[কোড: {lead.memberCode}]</span>}
                                     </span>
                                   ))}
                                 </div>
@@ -1364,31 +1430,45 @@ export default function AdminDashboard({
                           </div>
 
                           <div className="p-3.5 border border-zinc-200 dark:border-zinc-800 rounded bg-white dark:bg-zinc-950 space-y-3">
-                            <h5 className="text-xs font-bold text-rose-700 dark:text-rose-450">নতুন শিক্ষাঙ্গন / শাখা সংসদ কমিটি যুক্ত করুন</h5>
+                            <h5 className="text-xs font-bold text-rose-700 dark:text-rose-455">নতুন শিক্ষাঙ্গন / শাখা সংসদ কমিটি যুক্ত করুন</h5>
                             <input
                               type="text"
-                              className="text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-905 text-zinc-950 dark:text-white w-full"
+                              className="text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-950 dark:text-white w-full"
                               placeholder="শাখার নাম (যেমনঃ আনন্দ মোহন কলেজ শাখা সংসদ)"
                               value={uUnitName}
                               onChange={(e) => setUUnitName(e.target.value)}
                             />
                             
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-808 rounded">
                               <div className="space-y-2">
                                 <h6 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">নেতৃত্ব ১:</h6>
                                 <input
                                   type="text"
-                                  className="text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2 py-1 w-full bg-white dark:bg-zinc-950 text-zinc-800 dark:text-white"
+                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-955 text-zinc-800 dark:text-white"
                                   placeholder="নাম"
                                   value={uLeadName1}
                                   onChange={(e) => setULeadName1(e.target.value)}
                                 />
                                 <input
                                   type="text"
-                                  className="text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2 py-1 w-full bg-white dark:bg-zinc-950 text-zinc-800 dark:text-white"
+                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-955 text-zinc-808 dark:text-white"
                                   placeholder="পদবী (যেমনঃ সভাপতি, আহ্বায়ক)"
                                   value={uLeadRole1}
                                   onChange={(e) => setULeadRole1(e.target.value)}
+                                />
+                                <input
+                                  type="text"
+                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-955 text-zinc-808 dark:text-white font-mono"
+                                  placeholder="মেম্বার কোড (ঐচ্ছিক)"
+                                  value={uLead1MemberCode}
+                                  onChange={(e) => setULead1MemberCode(e.target.value)}
+                                />
+                                <input
+                                  type="text"
+                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-955 text-zinc-808 dark:text-white"
+                                  placeholder="ছবি ইউআরএল (ঐচ্ছিক)"
+                                  value={uLead1PhotoUrl}
+                                  onChange={(e) => setULead1PhotoUrl(e.target.value)}
                                 />
                               </div>
 
@@ -1396,17 +1476,31 @@ export default function AdminDashboard({
                                 <h6 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">নেতৃত্ব ২ (ঐচ্ছিক):</h6>
                                 <input
                                   type="text"
-                                  className="text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2 py-1 w-full bg-white dark:bg-zinc-950 text-zinc-800 dark:text-white"
+                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-955 text-zinc-800 dark:text-white"
                                   placeholder="নাম"
                                   value={uLeadName2}
                                   onChange={(e) => setULeadName2(e.target.value)}
                                 />
                                 <input
                                   type="text"
-                                  className="text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2 py-1 w-full bg-white dark:bg-zinc-950 text-zinc-800 dark:text-white"
+                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-955 text-zinc-808 dark:text-white"
                                   placeholder="পদবী (যেমনঃ সাধারণ সম্পাদক)"
                                   value={uLeadRole2}
                                   onChange={(e) => setULeadRole2(e.target.value)}
+                                />
+                                <input
+                                  type="text"
+                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-955 text-zinc-808 dark:text-white font-mono"
+                                  placeholder="মেম্বার কোড (ঐচ্ছিক)"
+                                  value={uLead2MemberCode}
+                                  onChange={(e) => setULead2MemberCode(e.target.value)}
+                                />
+                                <input
+                                  type="text"
+                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-955 text-zinc-808 dark:text-white"
+                                  placeholder="ছবি ইউআরএল (ঐচ্ছিক)"
+                                  value={uLead2PhotoUrl}
+                                  onChange={(e) => setULead2PhotoUrl(e.target.value)}
                                 />
                               </div>
                             </div>
@@ -1415,17 +1509,31 @@ export default function AdminDashboard({
                               type="button"
                               onClick={() => {
                                 if (!uUnitName || !uLeadName1 || !uLeadRole1) return;
-                                const committeeLeaders = [{ name: uLeadName1, role: uLeadRole1 }];
+                                const committeeLeaders = [{
+                                  name: uLeadName1,
+                                  role: uLeadRole1,
+                                  memberCode: uLead1MemberCode ? uLead1MemberCode.trim() : null,
+                                  photoUrl: uLead1PhotoUrl ? uLead1PhotoUrl.trim() : null
+                                }];
                                 if (uLeadName2 && uLeadRole2) {
-                                  committeeLeaders.push({ name: uLeadName2, role: uLeadRole2 });
+                                  committeeLeaders.push({
+                                    name: uLeadName2,
+                                    role: uLeadRole2,
+                                    memberCode: uLead2MemberCode ? uLead2MemberCode.trim() : null,
+                                    photoUrl: uLead2PhotoUrl ? uLead2PhotoUrl.trim() : null
+                                  });
                                 }
                                 const updated = [...(db.settings.leadersUnits || []), { unitName: uUnitName, leaders: committeeLeaders }];
                                 handleSaveUnits(updated);
                                 setUUnitName('');
                                 setULeadName1('');
                                 setULeadRole1('');
+                                setULead1MemberCode('');
+                                setULead1PhotoUrl('');
                                 setULeadName2('');
                                 setULeadRole2('');
+                                setULead2MemberCode('');
+                                setULead2PhotoUrl('');
                               }}
                               disabled={isSavingLeaders || !uUnitName || !uLeadName1 || !uLeadRole1}
                               className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-bold cursor-pointer"
@@ -1436,7 +1544,8 @@ export default function AdminDashboard({
                         </div>
                       )}
 
-                      {/* Former leadership section */}
+                      
+{/* Former leadership section */}
                       {leadersSubTab === 'former' && (
                         <div className="space-y-4 font-sans">
                           <div className="space-y-2 max-h-52 overflow-y-auto border border-zinc-200 dark:border-zinc-800 p-2.5 rounded bg-white dark:bg-zinc-950">

@@ -14,6 +14,7 @@ import PortalAuth from './components/PortalAuth';
 import MediaCenter from './components/MediaCenter';
 import ContactSection from './components/ContactSection';
 import AdminDashboard from './components/AdminDashboard';
+import CardVerificationModal from './components/CardVerificationModal';
 import { AppDatabase } from './server/db-initial';
 import { Volume2, RefreshCw, Smartphone, Monitor, ChevronRight } from 'lucide-react';
 import { fetchFirestoreDatabase, saveFirestoreDoc, deleteFirestoreDoc, resetFirestoreDatabase } from './firebase';
@@ -34,6 +35,9 @@ export default function App() {
 
   // Offline Detection State
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
+  // Verification State triggered by QR
+  const [verifyMemberId, setVerifyMemberId] = useState<string | null>(null);
 
   // Sync online/offline listener
   useEffect(() => {
@@ -119,6 +123,11 @@ export default function App() {
     const urlTab = params.get('tab');
     if (urlTab && ['home', 'news', 'books', 'events', 'circulars', 'about', 'join', 'portal', 'media', 'contact'].includes(urlTab)) {
       setCurrentTab(urlTab);
+    }
+
+    const mId = params.get('verify-member');
+    if (mId) {
+      setVerifyMemberId(mId);
     }
 
     // Fetch database contents
@@ -242,6 +251,27 @@ export default function App() {
         console.error(e);
       }
       await fetchDatabase();
+    }
+  };
+
+  const handleCloseVerification = () => {
+    setVerifyMemberId(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('verify-member');
+    window.history.replaceState({}, '', url.pathname + url.search);
+  };
+
+  const handleViewMemberProfile = (memberCode: string) => {
+    if (!memberCode) return;
+    const cleanCode = memberCode.replace('SSF-MYM-', '').trim().toLowerCase();
+    const matched = db?.memberships?.find(m => {
+      const matchId = m.id.substring(m.id.length - 5).toLowerCase();
+      return matchId === cleanCode || m.id.toLowerCase() === cleanCode || (m.mobile && m.mobile.includes(cleanCode));
+    });
+    if (matched) {
+      setVerifyMemberId(matched.id);
+    } else {
+      alert(`দুঃখিত, '${memberCode}' এই মেম্বার কোডের বিপরীতে আমাদের ডাটাবেজে কোনো নিবন্ধিত সদস্য প্রোফাইল পাওয়া যায়নি।`);
     }
   };
 
@@ -969,7 +999,7 @@ export default function App() {
       case 'about':
         return <AboutUs settings={settings} organizations={db.organizations || []} />;
       case 'leadership':
-        return <LeadershipSection settings={settings} />;
+        return <LeadershipSection settings={settings} onViewMemberProfile={handleViewMemberProfile} />;
       case 'news':
         return (
           <NewsBlogSection
@@ -1245,6 +1275,19 @@ export default function App() {
               </div>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Verification modal layer */}
+      <AnimatePresence>
+        {verifyMemberId && db && (
+          <CardVerificationModal
+            verifyMemberId={verifyMemberId}
+            userEmail={userEmail}
+            onLogin={handleLogin}
+            db={db}
+            onClose={handleCloseVerification}
+          />
         )}
       </AnimatePresence>
 

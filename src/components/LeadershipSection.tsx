@@ -5,9 +5,10 @@ import { WebSettings } from '../types';
 
 interface LeadershipSectionProps {
   settings: WebSettings;
+  onViewMemberProfile?: (memberCode: string) => void;
 }
 
-export default function LeadershipSection({ settings }: LeadershipSectionProps) {
+export default function LeadershipSection({ settings, onViewMemberProfile }: LeadershipSectionProps) {
   const [activeCommittee, setActiveCommittee] = useState<'district' | 'executive' | 'units' | 'former'>('district');
 
   const districtCommittee = settings.leadersDistrict || [];
@@ -36,7 +37,7 @@ export default function LeadershipSection({ settings }: LeadershipSectionProps) 
           className={`flex-1 text-center py-3 border-b-2 transition cursor-pointer ${
             activeCommittee === 'district'
               ? 'border-rose-600 text-rose-600 dark:text-rose-400'
-              : 'border-transparent text-zinc-500 hover:text-zinc-850 dark:hover:text-white'
+              : 'border-transparent text-zinc-505 hover:text-zinc-850 dark:hover:text-white'
           }`}
         >
           জেলা কমিটি
@@ -46,7 +47,7 @@ export default function LeadershipSection({ settings }: LeadershipSectionProps) 
           className={`flex-1 text-center py-3 border-b-2 transition cursor-pointer ${
             activeCommittee === 'executive'
               ? 'border-rose-600 text-rose-600 dark:text-rose-400'
-              : 'border-transparent text-zinc-500 hover:text-zinc-855 dark:hover:text-white'
+              : 'border-transparent text-zinc-550 hover:text-zinc-850 dark:hover:text-white'
           }`}
         >
           জেলা সম্পাদকমণ্ডলী ও সদস্য
@@ -56,7 +57,7 @@ export default function LeadershipSection({ settings }: LeadershipSectionProps) 
           className={`flex-1 text-center py-3 border-b-2 transition cursor-pointer ${
             activeCommittee === 'units'
               ? 'border-rose-600 text-rose-600 dark:text-rose-400'
-              : 'border-transparent text-zinc-500 hover:text-zinc-855 dark:hover:text-white'
+              : 'border-transparent text-zinc-550 hover:text-zinc-850 dark:hover:text-white'
           }`}
         >
           শিক্ষা প্রতিষ্ঠান শাখা
@@ -66,7 +67,7 @@ export default function LeadershipSection({ settings }: LeadershipSectionProps) 
           className={`flex-1 text-center py-3 border-b-2 transition cursor-pointer ${
             activeCommittee === 'former'
               ? 'border-rose-600 text-rose-600 dark:text-rose-400'
-              : 'border-transparent text-zinc-500 hover:text-zinc-855 dark:hover:text-white'
+              : 'border-transparent text-zinc-550 hover:text-zinc-850 dark:hover:text-white'
           }`}
         >
           প্রাক্তন বিপ্লবী নেতৃবৃন্দ
@@ -85,15 +86,34 @@ export default function LeadershipSection({ settings }: LeadershipSectionProps) 
               {districtCommittee.map((leader, index) => (
                 <div
                   key={index}
-                  className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded-sm p-5 text-center flex flex-col justify-between hover:border-rose-600/30 transition-all duration-300"
+                  className={`bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded-sm p-5 text-center flex flex-col justify-between hover:border-rose-600/30 transition-all duration-300 ${
+                    leader.memberCode ? 'cursor-pointer hover:shadow-md' : ''
+                  }`}
+                  onClick={() => {
+                    if (leader.memberCode && onViewMemberProfile) {
+                      onViewMemberProfile(leader.memberCode);
+                    }
+                  }}
+                  title={leader.memberCode ? `${leader.memberCode} প্রোফাইল লিংক দেখতে ক্লিক করুন` : undefined}
                 >
                   <div className="flex justify-center mb-3">
-                    <div className="h-12 w-12 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold text-lg">
-                      {leader.name[0]}
-                    </div>
+                    {leader.photoUrl ? (
+                      <div className="h-14 w-14 rounded-full border border-rose-500/15 overflow-hidden shadow-sm bg-zinc-50">
+                        <img src={leader.photoUrl} alt={leader.name} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                      </div>
+                    ) : (
+                      <div className="h-12 w-12 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold text-lg select-none">
+                        {leader.name[0]}
+                      </div>
+                    )}
                   </div>
                   <div>
-                    <h4 className="font-bold text-sm sm:text-base text-zinc-900 dark:text-white truncate">{leader.name}</h4>
+                    <h4 className="font-bold text-sm sm:text-base text-zinc-900 dark:text-white truncate flex items-center justify-center gap-1.5">
+                      <span>{leader.name}</span>
+                      {leader.memberCode && (
+                        <span className="text-[7.5px] bg-rose-100 dark:bg-rose-955 text-rose-700 dark:text-rose-450 border border-rose-200 dark:border-rose-900 px-1 rounded-xs font-mono font-bold leading-normal">LINKED</span>
+                      )}
+                    </h4>
                     <p className="text-xs font-semibold text-rose-600 dark:text-rose-500 mt-1">{leader.role}</p>
                     <p className="text-[10px] text-zinc-400 font-mono mt-1 dark:text-zinc-500 truncate">{leader.inst}</p>
                   </div>
@@ -113,12 +133,33 @@ export default function LeadershipSection({ settings }: LeadershipSectionProps) 
               {executiveCommittee.map((leader, index) => (
                 <div
                   key={index}
-                  className="bg-zinc-50 dark:bg-zinc-900/50 p-4 border border-zinc-150 dark:border-zinc-850 rounded flex items-center space-x-3"
+                  className={`bg-zinc-50 dark:bg-zinc-900/50 p-4 border border-zinc-150 dark:border-zinc-850 rounded flex items-center justify-between gap-3 ${
+                    leader.memberCode ? 'cursor-pointer hover:border-rose-600/30' : ''
+                  }`}
+                  onClick={() => {
+                    if (leader.memberCode && onViewMemberProfile) {
+                      onViewMemberProfile(leader.memberCode);
+                    }
+                  }}
+                  title={leader.memberCode ? `${leader.memberCode} প্রোফাইল লিংক দেখতে ক্লিক করুন` : undefined}
                 >
-                  <UserCheck className="w-5 h-5 text-rose-600 shrink-0" />
-                  <div className="min-w-0">
-                    <h4 className="font-bold text-sm text-zinc-805 dark:text-white truncate">{leader.name}</h4>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">{leader.role} • {leader.inst}</p>
+                  <div className="flex items-center space-x-3 min-w-0">
+                    {leader.photoUrl ? (
+                      <div className="h-10 w-10 rounded-full border border-rose-500/15 overflow-hidden shadow-inner shrink-0 bg-white dark:bg-zinc-950">
+                        <img src={leader.photoUrl} alt={leader.name} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                      </div>
+                    ) : (
+                      <UserCheck className="w-5 h-5 text-rose-600 shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <h4 className="font-bold text-sm text-zinc-805 dark:text-white truncate flex items-center gap-1.5">
+                        <span>{leader.name}</span>
+                        {leader.memberCode && (
+                          <span className="text-[7px] bg-rose-100 dark:bg-rose-955 text-rose-700 dark:text-rose-455 px-1 bg-rose-955/20 border border-rose-250 dark:border-rose-900 rounded font-mono font-extrabold">LINKED</span>
+                        )}
+                      </h4>
+                      <p className="text-xs text-zinc-505 dark:text-zinc-400">{leader.role} • {leader.inst}</p>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -144,9 +185,30 @@ export default function LeadershipSection({ settings }: LeadershipSectionProps) 
 
                   <div className="space-y-2.5">
                     {unit.leaders.map((leader, lidx) => (
-                      <div key={lidx} className="flex justify-between items-center text-xs text-zinc-700 dark:text-zinc-300 bg-zinc-50 dark:bg-zinc-900 p-2.5 rounded-xs font-sans">
-                        <span className="font-bold">{leader.name}</span>
-                        <span className="text-zinc-505 font-mono">{leader.role}</span>
+                      <div
+                        key={lidx}
+                        className={`flex justify-between items-center text-xs text-zinc-700 dark:text-zinc-300 bg-zinc-50 dark:bg-zinc-900 p-2.5 rounded-sm font-sans ${
+                          leader.memberCode ? 'cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-850' : ''
+                        }`}
+                        onClick={() => {
+                          if (leader.memberCode && onViewMemberProfile) {
+                            onViewMemberProfile(leader.memberCode);
+                          }
+                        }}
+                        title={leader.memberCode ? `${leader.memberCode} প্রোফাইল লিংক দেখতে ক্লিক করুন` : undefined}
+                      >
+                        <div className="flex items-center space-x-2">
+                          {leader.photoUrl && (
+                            <div className="h-6 w-6 rounded-full overflow-hidden border border-rose-500/10">
+                              <img src={leader.photoUrl} alt={leader.name} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                            </div>
+                          )}
+                          <span className="font-bold flex items-center gap-1.5">
+                            <span>{leader.name}</span>
+                            {leader.memberCode && <span className="text-[7.5px] bg-rose-100 dark:bg-rose-955 text-rose-700 px-1 border border-rose-200 dark:border-rose-900/50 rounded font-mono font-bold leading-none py-0.5">LINK</span>}
+                          </span>
+                        </div>
+                        <span className="text-zinc-500 font-mono text-[11px] font-semibold">{leader.role}</span>
                       </div>
                     ))}
                   </div>
@@ -166,19 +228,41 @@ export default function LeadershipSection({ settings }: LeadershipSectionProps) 
               {formerLeaders.map((leader, index) => (
                 <div
                   key={index}
-                  className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 p-5 rounded flex flex-col md:flex-row md:items-center justify-between gap-4"
+                  className={`bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 p-5 rounded flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                    leader.memberCode ? 'cursor-pointer hover:border-rose-600/30' : ''
+                  }`}
+                  onClick={() => {
+                    if (leader.memberCode && onViewMemberProfile) {
+                      onViewMemberProfile(leader.memberCode);
+                    }
+                  }}
+                  title={leader.memberCode ? `${leader.memberCode} প্রোফাইল লিংক দেখতে ক্লিক করুন` : undefined}
                 >
-                  <div>
-                    <h4 className="text-sm font-bold text-zinc-900 dark:text-white flex items-center gap-1.5">
-                      <span className="h-1.5 w-1.5 rounded-full bg-rose-600 inline-block"></span>
-                      <span>{leader.name}</span>
-                    </h4>
-                    <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 font-sans">
-                      {leader.contribution}
-                    </p>
+                  <div className="flex items-center gap-3">
+                    {leader.photoUrl ? (
+                      <div className="h-10 w-10 rounded-full overflow-hidden border border-rose-500/15">
+                        <img src={leader.photoUrl} alt={leader.name} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                      </div>
+                    ) : (
+                      <div className="h-8 w-8 rounded-full bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center font-bold text-xs">
+                        {leader.name[0]}
+                      </div>
+                    )}
+                    <div>
+                      <h4 className="text-sm font-bold text-zinc-900 dark:text-white flex items-center gap-1.5">
+                        <span className="h-1.5 w-1.5 rounded-full bg-rose-600 inline-block"></span>
+                        <span>{leader.name}</span>
+                        {leader.memberCode && (
+                          <span className="text-[7.5px] bg-rose-100 dark:bg-rose-955 text-rose-700 dark:text-rose-455 border border-rose-250 dark:border-rose-900/40 px-1 rounded font-mono font-bold">LINKED</span>
+                        )}
+                      </h4>
+                      <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 font-sans">
+                        {leader.contribution}
+                      </p>
+                    </div>
                   </div>
 
-                  <span className="text-xs font-mono font-bold bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 px-2.5 py-1 rounded shrink-0 self-start md:self-auto">
+                  <span className="text-xs font-mono font-bold bg-rose-50 text-rose-600 dark:bg-rose-955 dark:text-rose-450 px-2.5 py-1 rounded shrink-0 self-start md:self-auto">
                     নেতৃত্বকাল: {leader.duration}
                   </span>
                 </div>

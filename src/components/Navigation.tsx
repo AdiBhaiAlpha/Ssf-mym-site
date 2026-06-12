@@ -176,12 +176,19 @@ export default function Navigation({
     if (!email) return;
 
     if (email === 'chitronbhattacharjee@gmail.com') {
-      onLogin(email);
-      setShowLoginModal(false);
-      setLoginEmail('');
-      setLoginPassword('');
-      logMemberLoginDirect(email, 'success', 'সুপার এডমিন (চিত্রণ ভট্টাচার্য) হিসেবে মূল ডাটাবেজে প্রবেশ করেছেন।');
-      return;
+      const SUPER_ADMIN_PASSWORD = (import.meta as any).env.VITE_SUPER_ADMIN_PASSWORD || 'chitron@2448766';
+      if (loginPassword.trim() === SUPER_ADMIN_PASSWORD) {
+        onLogin(email);
+        setShowLoginModal(false);
+        setLoginEmail('');
+        setLoginPassword('');
+        logMemberLoginDirect(email, 'success', 'সুপার এডমিন (চিত্রণ ভট্টাচার্য) হিসেবে মডিউল পাসওয়ার্ড দিয়ে মূল ডাটাবেজে প্রবেশ করেছেন।');
+        return;
+      } else {
+        setLoginError('দুঃখিত, সুপার এডমিন পাসওয়ার্ডটি সঠিক নয়। অনুগ্রহ করে পুনরায় সঠিক পাসওয়ার্ড দিন।');
+        logMemberLoginDirect(email, 'failed', 'ভুল সুপার এডমিন পাসওয়ার্ড দিয়ে লগইন চেষ্টা করা হয়েছে।');
+        return;
+      }
     }
 
     const foundMember = memberships.find(m => m.email?.toLowerCase() === email);
@@ -325,12 +332,7 @@ export default function Navigation({
     }
   };
 
-  const handleQuickAdminLogin = () => {
-    onLogin('chitronbhattacharjee@gmail.com');
-    setShowLoginModal(false);
-    setLoginError('');
-    logMemberLoginDirect('chitronbhattacharjee@gmail.com', 'success', 'কুইক লগইন বাটন দ্বারা সুপার এডমিন অ্যাক্সেস নেওয়া হয়েছে।');
-  };
+
 
   return (
     <>
@@ -1174,21 +1176,7 @@ export default function Navigation({
                 </>
               )}
 
-              {/* Quick Admin Override credentials block */}
-              <div className="mt-6 border-t border-zinc-100 dark:border-zinc-900 pt-4 text-center select-none font-sans">
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-2 leading-relaxed">
-                  পরীক্ষা করার জন্য সরাসরি সুপার এডমিন হিসেবে সহজে প্রবেশ করতে নিচে ক্লিক করুন:
-                </p>
-                <button
-                  type="button"
-                  id="btn-quick-admin-login"
-                  onClick={handleQuickAdminLogin}
-                  className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 bg-rose-100 hover:bg-rose-200 dark:bg-rose-950/40 dark:hover:bg-rose-900/40 text-rose-700 dark:text-rose-455 text-xs font-bold rounded transition border border-rose-200/60 dark:border-rose-900/50"
-                >
-                  <ShieldAlert className="w-3.5 h-3.5" />
-                  <span>সুপার এডমিন লগইন</span>
-                </button>
-              </div>
+
             </motion.div>
           </div>
         )}

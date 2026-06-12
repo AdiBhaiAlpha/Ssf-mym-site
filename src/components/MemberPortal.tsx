@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Award, User, Phone, Mail, MapPin, Calendar, LogOut, CheckCircle2, ShieldCheck, FileText, BookOpen, Clock, Smartphone, Download, Sparkles, Flame, Camera, Link, Check, RefreshCw } from 'lucide-react';
-import { MemberRegistration, News, Circular, Book, WebSettings } from '../types';
+import { Award, User, Phone, Mail, MapPin, Calendar, LogOut, CheckCircle2, ShieldCheck, FileText, BookOpen, Clock, Smartphone, Download, Sparkles, Flame, Camera, Link, Check, RefreshCw, Pencil, History, Save, Undo, Eye, X } from 'lucide-react';
+import { MemberRegistration, News, Circular, Book, WebSettings, getMemberBadgeText } from '../types';
 import { motion } from 'motion/react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -9,18 +9,104 @@ interface MemberPortalProps {
   member: MemberRegistration;
   onLogout: () => void;
   onRefresh?: () => Promise<any> | any;
+  onUpdateMember?: (updated: MemberRegistration) => Promise<boolean>;
   circulars: Circular[];
   books: Book[];
   settings?: WebSettings;
 }
 
-export default function MemberPortal({ member, onLogout, onRefresh, circulars = [], books = [], settings }: MemberPortalProps) {
+export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMember, circulars = [], books = [], settings }: MemberPortalProps) {
   const memberId = `SSF-MYM-${member.id.substring(member.id.length - 5).toUpperCase()}`;
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [copied, setCopied] = useState(false);
   const [photoUrlInput, setPhotoUrlInput] = useState('');
   const [loadingUrl, setLoadingUrl] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Profile Edit and History state variables
+  const [isEditing, setIsEditing] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: member.name || '',
+    mobile: member.mobile || '',
+    email: member.email || '',
+    dob: member.dob || '',
+    address: member.address || '',
+    institution: member.institution || '',
+    department: member.department || '',
+    academicYear: member.academicYear || '',
+  });
+  const [saveLoading, setSaveLoading] = useState(false);
+
+  const startEditing = () => {
+    setEditForm({
+      name: member.name || '',
+      mobile: member.mobile || '',
+      email: member.email || '',
+      dob: member.dob || '',
+      address: member.address || '',
+      institution: member.institution || '',
+      department: member.department || '',
+      academicYear: member.academicYear || '',
+    });
+    setIsEditing(true);
+  };
+
+  const handleSaveProfile = async () => {
+    const changes: any[] = [];
+    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const editedBy = member.email || 'সদস্য নিজে';
+
+    const fieldsToCompare = [
+      { key: 'name', label: 'নাম' },
+      { key: 'mobile', label: 'মোবাইল ফোন নম্বর' },
+      { key: 'email', label: 'দাপ্তরিক ইমেইল' },
+      { key: 'dob', label: 'রক্তের গ্রুপ / DOB' },
+      { key: 'address', label: 'বর্তমান ঠিকানা' },
+      { key: 'institution', label: 'শিক্ষা প্রতিষ্ঠান' },
+      { key: 'department', label: 'শ্রেণি বা বিভাগ' },
+      { key: 'academicYear', label: 'শিক্ষাবর্ষ বা সেশন' },
+    ];
+
+    fieldsToCompare.forEach(({ key, label }) => {
+      const oldVal = (member as any)[key] || '';
+      const newVal = (editForm as any)[key] || '';
+      if (oldVal !== newVal) {
+        changes.push({
+          timestamp,
+          editedBy,
+          field: label,
+          oldValue: oldVal,
+          newValue: newVal
+        });
+      }
+    });
+
+    if (changes.length === 0) {
+      setIsEditing(false);
+      return;
+    }
+
+    const updatedHistory = [...(member.editHistory || []), ...changes];
+    const updatedMember: MemberRegistration = {
+      ...member,
+      ...editForm,
+      editHistory: updatedHistory
+    };
+
+    if (onUpdateMember) {
+      setSaveLoading(true);
+      const success = await onUpdateMember(updatedMember);
+      setSaveLoading(false);
+      if (success) {
+        setIsEditing(false);
+        if (onRefresh) await onRefresh();
+      } else {
+        alert('তথ্য সংশোধন করতে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।');
+      }
+    }
+  };
 
   const getProxiedUrl = (url: string | undefined) => {
     if (!url) return '';
@@ -62,6 +148,8 @@ export default function MemberPortal({ member, onLogout, onRefresh, circulars = 
     const cardEl = document.getElementById('member-identity-card');
     if (!cardEl) return;
     try {
+      setIsExporting(true);
+      await new Promise((resolve) => setTimeout(resolve, 150));
       const canvas = await html2canvas(cardEl, {
         scale: 3, // High quality output
         useCORS: true,
@@ -74,6 +162,8 @@ export default function MemberPortal({ member, onLogout, onRefresh, circulars = 
     } catch (err) {
       console.error('PNG download error:', err);
       alert('দুঃখিত, ইমেজ ডাউনলোডের সময় কোনো সমস্যা হয়েছে। দয়া করে পুনরায় চেষ্টা করুন।');
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -81,6 +171,8 @@ export default function MemberPortal({ member, onLogout, onRefresh, circulars = 
     const cardEl = document.getElementById('member-identity-card');
     if (!cardEl) return;
     try {
+      setIsExporting(true);
+      await new Promise((resolve) => setTimeout(resolve, 150));
       const canvas = await html2canvas(cardEl, {
         scale: 3,
         useCORS: true,
@@ -100,6 +192,8 @@ export default function MemberPortal({ member, onLogout, onRefresh, circulars = 
     } catch (err) {
       console.error('PDF download error:', err);
       alert('দুঃখিত, পিডিএফ ডাউনলোডের সময় কোনো সমস্যা হয়েছে। পুনরায় চেষ্টা করুন।');
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -293,8 +387,8 @@ export default function MemberPortal({ member, onLogout, onRefresh, circulars = 
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="bg-rose-955 text-rose-450 font-mono text-[9px] font-black border border-rose-900/40 px-2 py-0.5 rounded shadow-xs select-none">
-                      ACTIVE MEMBER
+                    <span className="bg-rose-955 text-rose-450 font-sans text-[9px] font-extrabold border border-rose-900/40 px-2 py-0.5 rounded shadow-xs select-none uppercase tracking-wide">
+                      {getMemberBadgeText(member)}
                     </span>
                   </div>
                 </div>
@@ -302,7 +396,7 @@ export default function MemberPortal({ member, onLogout, onRefresh, circulars = 
                 {/* Card Main Body */}
                 <div className="grid grid-cols-12 gap-3.5 my-4 items-start relative">
                   {/* Photo area with fallback User icon or actual path */}
-                  <div className="col-span-3.5 flex flex-col items-center justify-start pt-1.5">
+                  <div className="col-span-3 flex flex-col items-center justify-start pt-1.5">
                     <div className="w-[88px] h-[110px] rounded border border-zinc-800 bg-zinc-900 flex flex-col items-center justify-center text-rose-500 relative overflow-hidden shadow-inner shrink-0">
                       {member.photoUrl ? (
                         <img 
@@ -323,7 +417,7 @@ export default function MemberPortal({ member, onLogout, onRefresh, circulars = 
                   </div>
 
                   {/* Member info */}
-                  <div className="col-span-8.5 space-y-1.5 font-sans">
+                  <div className="col-span-9 space-y-1.5 font-sans">
                     <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
                       <div className="col-span-2">
                         <span className="text-[7.5px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">নাম / Full Name</span>
@@ -362,19 +456,45 @@ export default function MemberPortal({ member, onLogout, onRefresh, circulars = 
                 <div className="flex items-end justify-between pt-3 border-t border-zinc-900 mt-2 text-zinc-500 text-[9px] relative font-sans">
                   
                   {/* Left Block: Code & Issue Date */}
-                  <div className="space-y-1.5 text-left">
-                    <button 
-                      onClick={handleCopy}
-                      className="font-mono text-left cursor-pointer hover:text-rose-450 transition active:scale-95 group/code block"
-                      title="ক্লিক করুন কপি করতে"
-                    >
-                      <span className="text-[7.5px] text-zinc-550 group-hover/code:text-rose-500 uppercase tracking-widest block font-sans transition leading-none">মেম্বারশিপ কোড (ক্লিক করে কপি করুন)</span>
-                      <strong className="text-zinc-200 group-hover/code:text-white text-[10px] font-bold tracking-wider block transition leading-tight mt-0.5">{memberId}</strong>
-                    </button>
-                    
-                    <div>
-                      <span className="text-[7.5px] text-zinc-550 uppercase tracking-wider block font-sans leading-none">ইস্যু ডেট</span>
-                      <strong className="text-zinc-350 block font-mono font-bold text-[9px] leading-tight mt-0.5">{member.verifiedAt || member.appliedAt}</strong>
+                  <div className="space-y-1.5 text-left flex-1 min-w-0 pr-2">
+                    {!isExporting ? (
+                      <div className="print:hidden">
+                        <button 
+                          onClick={handleCopy}
+                          className="font-mono text-left cursor-pointer hover:text-rose-450 transition active:scale-95 group/code block"
+                          title="ক্লিক করুন কপি করতে"
+                        >
+                          <span className="text-[7.5px] text-zinc-550 group-hover/code:text-rose-500 uppercase tracking-widest block font-sans transition leading-none">মেম্বারশিপ কোড (ক্লিক করে কপি করুন)</span>
+                          <strong className="text-zinc-200 group-hover/code:text-white text-[10px] font-bold tracking-wider block transition leading-tight mt-0.5">{memberId}</strong>
+                        </button>
+                        
+                        <div className="mt-1.5">
+                          <span className="text-[7.5px] text-zinc-550 uppercase tracking-wider block font-sans leading-none">ইস্যু ডেট</span>
+                          <strong className="text-zinc-350 block font-mono font-bold text-[9px] leading-tight mt-0.5">{member.verifiedAt || member.appliedAt}</strong>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {/* QR Code and verification tag during export (html2canvas) */}
+                    {isExporting && (
+                      <div className="flex flex-col items-start space-y-1">
+                        <span className="text-[7px] text-zinc-400 uppercase tracking-widest font-extrabold leading-none">Validate this card</span>
+                        <img 
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`${window.location.protocol}//${window.location.host}/?verify-member=${member.id}`)}`}
+                          alt="Verification QR Code"
+                          className="w-11 h-11 object-contain rounded bg-white p-[1px] border border-zinc-850"
+                        />
+                      </div>
+                    )}
+
+                    {/* QR Code and verification tag during native print */}
+                    <div className="hidden print:flex flex-col items-start space-y-1">
+                      <span className="text-[7px] text-zinc-400 uppercase tracking-widest font-extrabold leading-none">Validate this card</span>
+                      <img 
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`${window.location.protocol}//${window.location.host}/?verify-member=${member.id}`)}`}
+                        alt="Verification QR Code"
+                        className="w-11 h-11 object-contain rounded bg-white p-[1px] border border-zinc-850"
+                      />
                     </div>
                   </div>
 
@@ -541,47 +661,277 @@ export default function MemberPortal({ member, onLogout, onRefresh, circulars = 
             </p>
           </div>
 
-          {/* Core Member Details Card */}
+          {/* Core Member Details Card with self editing and historical logger updates */}
           <div className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded p-5 sm:p-6 shadow-xs space-y-4">
-            <h3 className="text-xs font-bold text-zinc-800 dark:text-zinc-200 pb-2.5 border-b border-zinc-100 dark:border-zinc-900 flex items-center gap-1.5">
-              <User className="w-4 h-4 text-rose-600" />
-              <span>ব্যক্তিগত মেম্বারশিপ প্রোফাইল</span>
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-sans">
-              <div className="space-y-1">
-                <span className="text-[10px] text-zinc-400 block font-mono">মোবাইল ফোন নম্বর</span>
-                <span className="font-bold text-zinc-850 dark:text-zinc-200 flex items-center gap-1">
-                  <Smartphone className="w-3.5 h-3.5 text-zinc-400" />
-                  <span className="font-mono">{member.mobile}</span>
+            <div className="flex items-center justify-between pb-2.5 border-b border-zinc-100 dark:border-zinc-900">
+              <h3 className="text-xs font-bold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
+                <User className="w-4 h-4 text-rose-600" />
+                <span>ব্যক্তিগত মেম্বারশিপ প্রোফাইল</span>
+                <span className="text-[10px] bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 font-sans px-2 py-0.5 rounded">
+                  {getMemberBadgeText(member)}
                 </span>
-              </div>
+              </h3>
 
-              <div className="space-y-1">
-                <span className="text-[10px] text-zinc-400 block font-mono">দাপ্তরিক ইমেইল এড্রেস</span>
-                <span className="font-bold text-zinc-855 dark:text-zinc-200 flex items-center gap-1 truncate">
-                  <Mail className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                  <span className="font-mono overflow-hidden pr-2">{member.email || 'তথ্য নাই'}</span>
-                </span>
-              </div>
-
-              <div className="space-y-1">
-                <span className="text-[10px] text-zinc-400 block font-mono">জন্ম তারিখ / DOB</span>
-                <span className="font-bold text-zinc-850 dark:text-zinc-200 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-zinc-400" />
-                  <span className="font-mono">{member.dob || 'তথ্য নাই'}</span>
-                </span>
-              </div>
-
-              <div className="space-y-1">
-                <span className="text-[10px] text-zinc-400 block font-mono">মেইল বা বর্তমান ঠিকানা</span>
-                <span className="font-bold text-zinc-850 dark:text-zinc-200 flex items-center gap-1 truncate">
-                  <MapPin className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                  <span>{member.address}</span>
-                </span>
+              <div className="flex items-center gap-2">
+                {!isEditing ? (
+                  <>
+                    <button
+                      onClick={startEditing}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-zinc-100 hover:bg-rose-600 dark:bg-zinc-900 dark:hover:bg-rose-600 text-zinc-800 dark:text-zinc-200 hover:text-white rounded text-[10px] font-bold cursor-pointer transition"
+                    >
+                      <Pencil className="w-3 h-3" />
+                      <span>তথ্য সংশোধন করুন</span>
+                    </button>
+                    {(member.editHistory && member.editHistory.length > 0) && (
+                      <button
+                        onClick={() => setShowHistoryModal(true)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-zinc-150 hover:bg-zinc-250 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded text-[10px] font-bold cursor-pointer transition"
+                        title="পরিবর্তন লগের তালিকা দেখুন"
+                      >
+                        <History className="w-3 h-3 text-rose-500" />
+                        <span>ইতিহাস ({member.editHistory.length})</span>
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={handleSaveProfile}
+                      disabled={saveLoading}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold cursor-pointer transition"
+                    >
+                      {saveLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                      <span>সংরক্ষণ করুন</span>
+                    </button>
+                    <button
+                      onClick={() => setIsEditing(false)}
+                      disabled={saveLoading}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-zinc-150 hover:bg-zinc-250 dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 rounded text-[10px] font-bold cursor-pointer transition"
+                    >
+                      <Undo className="w-3 h-3" />
+                      <span>বাতিল</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
+
+            {!isEditing ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-4 text-xs font-sans">
+                <div className="space-y-1">
+                  <span className="text-[10px] text-zinc-400 block font-mono">পূর্ণ নাম</span>
+                  <span className="font-bold text-zinc-850 dark:text-zinc-200 block truncate font-sans">
+                    {member.name}
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[10px] text-zinc-400 block font-mono">মোবাইল ফোন নম্বর</span>
+                  <span className="font-bold text-zinc-850 dark:text-zinc-200 flex items-center gap-1">
+                    <Smartphone className="w-3.5 h-3.5 text-zinc-400" />
+                    <span className="font-mono">{member.mobile}</span>
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[10px] text-zinc-400 block font-mono">দাপ্তরিক ইমেইল এড্রেস</span>
+                  <span className="font-bold text-zinc-855 dark:text-zinc-200 flex items-center gap-1 truncate">
+                    <Mail className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                    <span className="font-mono overflow-hidden pr-2">{member.email || 'তথ্য নাই'}</span>
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[10px] text-zinc-400 block font-mono">রক্তের গ্রুপ / DOB</span>
+                  <span className="font-bold text-zinc-850 dark:text-zinc-200 flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-zinc-400" />
+                    <span className="font-mono">{member.dob || 'তথ্য নাই'}</span>
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[10px] text-zinc-400 block font-mono">শিক্ষা প্রতিষ্ঠান</span>
+                  <span className="font-bold text-zinc-850 dark:text-zinc-200 block truncate">
+                    {member.institution}
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[10px] text-zinc-400 block font-mono">শ্রেণি বা বিভাগ</span>
+                  <span className="font-bold text-zinc-850 dark:text-zinc-200 block truncate">
+                    {member.department || 'তথ্য নাই'}
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[10px] text-zinc-400 block font-mono">শিক্ষাবর্ষ বা সেশন</span>
+                  <span className="font-bold text-zinc-850 dark:text-zinc-200 block truncate">
+                    {member.academicYear || 'তথ্য নাই'}
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[10px] text-zinc-400 block font-mono">মেইল বা বর্তমান ঠিকানা</span>
+                  <span className="font-bold text-zinc-855 dark:text-zinc-200 flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                    <span className="truncate">{member.address}</span>
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3 font-sans text-xs pt-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-[10px] text-zinc-400 mb-1">পূর্ণ নাম / Name</label>
+                    <input
+                      type="text"
+                      className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-rose-500"
+                      value={editForm.name}
+                      onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] text-zinc-400 mb-1">মোবাইল ফোন নম্বর / Mobile</label>
+                    <input
+                      type="text"
+                      className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-rose-500 font-mono"
+                      value={editForm.mobile}
+                      onChange={(e) => setEditForm({ ...editForm, mobile: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] text-zinc-400 mb-1">ইমেইল এড্রেস / Email</label>
+                    <input
+                      type="email"
+                      className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-rose-500 font-mono"
+                      value={editForm.email}
+                      onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] text-zinc-400 mb-1">রক্তের গ্রুপ / Birthday / DOB</label>
+                    <input
+                      type="text"
+                      className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-rose-500"
+                      value={editForm.dob}
+                      onChange={(e) => setEditForm({ ...editForm, dob: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] text-zinc-400 mb-1">শিক্ষা প্রতিষ্ঠান / Institution</label>
+                    <input
+                      type="text"
+                      className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-rose-500"
+                      value={editForm.institution}
+                      onChange={(e) => setEditForm({ ...editForm, institution: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] text-zinc-400 mb-1">শ্রেণি বা বিভাগ / Department</label>
+                    <input
+                      type="text"
+                      className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-rose-500"
+                      value={editForm.department}
+                      onChange={(e) => setEditForm({ ...editForm, department: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-[10px] text-zinc-400 mb-1">শিক্ষাবর্ষ বা সেশন / Session</label>
+                    <input
+                      type="text"
+                      className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-rose-500"
+                      value={editForm.academicYear}
+                      onChange={(e) => setEditForm({ ...editForm, academicYear: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-[10px] text-zinc-400 mb-1">বর্তমান মেইলিং ঠিকানা / Address</label>
+                    <input
+                      type="text"
+                      className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-rose-500"
+                      value={editForm.address}
+                      onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="p-3 bg-amber-500/5 border border-amber-500/10 text-amber-500 text-[10px] rounded leading-normal">
+                  ⚠️ <b>মনোযোগ দিন:</b> তথ্য পরিবর্তন করার পর এটি আপনার পরিবর্তন ইতিহাসের তালিকায় ("change-log") একটি নতুন ভুক্টি হিসেবে সংরক্ষিত থাকবে যেখানে পরিবর্তনের পূর্বে কি ছিল ও কখন কি করা হয়েছে তার রেকর্ড থাকবে।
+                </div>
+              </div>
+            )}
           </div>
+
+          {/* Change History Modal */}
+          {showHistoryModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs font-sans">
+              <div className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded-lg max-w-lg w-full overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+                <div className="p-4 border-b border-zinc-150 dark:border-zinc-900 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900">
+                  <div className="flex items-center gap-2">
+                    <History className="w-4 h-4 text-rose-600 animate-pulse" />
+                    <div>
+                      <h3 className="text-xs font-bold text-zinc-800 dark:text-zinc-200">সদস্য তথ্য সংশোধনীর ইতিহাস</h3>
+                      <p className="text-[9px] text-zinc-500">আপনার পরিবর্তিত তথ্যের নিখুঁত ডিজিটাল পরিবর্তন-লগ (Audit History)</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setShowHistoryModal(false)}
+                    className="p-1 text-zinc-400 hover:text-rose-500 rounded cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="p-5 overflow-y-auto space-y-3 divide-y divide-zinc-100 dark:divide-zinc-900">
+                  {member.editHistory && member.editHistory.length > 0 ? (
+                    member.editHistory.map((item, index) => (
+                      <div key={index} className="pt-3 first:pt-0 text-[11px] font-sans">
+                        <div className="flex justify-between items-center text-[10px] text-zinc-400 mb-1.5 font-mono">
+                          <span className="bg-zinc-100 dark:bg-zinc-900 px-1.5 py-0.5 rounded text-zinc-600 dark:text-zinc-400">
+                            সংশোধক: {item.editedBy === member.email ? 'মেম্বার স্বয়ং' : item.editedBy}
+                          </span>
+                          <span>{item.timestamp}</span>
+                        </div>
+                        <p className="font-semibold text-zinc-700 dark:text-zinc-300">
+                          ক্ষেত্র: <span className="text-rose-600">{item.field}</span>
+                        </p>
+                        <div className="grid grid-cols-2 gap-2 mt-1.5 p-2 bg-zinc-50 dark:bg-zinc-900/60 rounded font-mono text-[10px] border border-zinc-200/50 dark:border-zinc-900">
+                          <div>
+                            <span className="text-zinc-400 block font-sans text-[8px] uppercase">পূর্বে ছিল</span>
+                            <span className="text-rose-600/95 line-through truncate block">{item.oldValue || '(ফাঁকা)'}</span>
+                          </div>
+                          <div>
+                            <span className="text-zinc-400 block font-sans text-[8px] uppercase">পরিবর্তিত রূপ</span>
+                            <span className="text-emerald-500 font-bold truncate block">{item.newValue}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-zinc-400">
+                      কোনো পরিবর্তনের ইতিহাস খুঁজে পাওয়া যায়নি।
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-4 bg-zinc-50 dark:bg-zinc-900/40 border-t border-zinc-150 dark:border-zinc-900 text-right">
+                  <button 
+                    onClick={() => setShowHistoryModal(false)}
+                    className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-white rounded text-xs font-bold cursor-pointer transition"
+                  >
+                    বুঝেছি, বন্ধ করুন
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Tabular Shortcuts: Latest Circulars & Study Library */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

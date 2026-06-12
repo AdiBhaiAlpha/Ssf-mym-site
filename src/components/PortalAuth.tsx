@@ -54,10 +54,18 @@ export default function PortalAuth({ memberships, onLogin }: PortalAuthProps) {
     setTimeout(async () => {
       // Check admin login
       if (cleanEmail === 'chitronbhattacharjee@gmail.com') {
-        onLogin(cleanEmail);
-        setLoading(false);
-        logMemberLoginDirect(cleanEmail, 'success', 'সদস্য পোর্টাল ট্যাব থেকে সরাসরি সুপার এডমিন সেশন চালু করা হয়েছে।');
-        return;
+        const SUPER_ADMIN_PASSWORD = (import.meta as any).env.VITE_SUPER_ADMIN_PASSWORD || 'chitron@2448766';
+        if (password.trim() === SUPER_ADMIN_PASSWORD) {
+          onLogin(cleanEmail);
+          setLoading(false);
+          logMemberLoginDirect(cleanEmail, 'success', 'সদস্য পোর্টাল ট্যাব থেকে পাসওয়ার্ড দ্বারা সফলভাবে সুপার এডমিন সেশন চালু করা হয়েছে।');
+          return;
+        } else {
+          setErrorMsg('দুঃখিত, সুপার এডমিন পাসওয়ার্ডটি সঠিক নয়। অনুগ্রহ করে পুনরায় সঠিক পাসওয়ার্ড দিন।');
+          setLoading(false);
+          logMemberLoginDirect(cleanEmail, 'failed', 'ভুল সুপার এডমিন পাসওয়ার্ড দিয়ে লগইন চেষ্টা করা হয়েছে।');
+          return;
+        }
       }
 
       const matched = memberships.find(m => m.email?.toLowerCase() === cleanEmail);

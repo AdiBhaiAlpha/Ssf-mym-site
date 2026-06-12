@@ -93,6 +93,14 @@ export interface GalleryItem {
   date: string;
 }
 
+export interface EditHistoryEntry {
+  timestamp: string;
+  editedBy: string;
+  field: string;
+  oldValue: string;
+  newValue: string;
+}
+
 export interface MemberRegistration {
   id: string;
   name: string;
@@ -109,6 +117,9 @@ export interface MemberRegistration {
   status: 'pending' | 'verified' | 'rejected';
   appliedAt: string;
   verifiedAt?: string;
+  roleTag?: 'super_admin' | 'coordinator_admin' | 'member' | 'volunteer';
+  badgeText?: string;
+  editHistory?: EditHistoryEntry[];
 }
 
 export interface AuditLog {
@@ -151,10 +162,10 @@ export interface WebSettings {
   visionText: string;
   constitutionalHeader: string;
   slogans: string[];
-  leadersDistrict: { name: string; role: string; inst: string; }[];
-  leadersExecutive: { name: string; role: string; inst: string; }[];
-  leadersUnits: { unitName: string; leaders: { name: string; role: string; }[] }[];
-  leadersFormer: { name: string; duration: string; contribution: string; }[];
+  leadersDistrict: { name: string; role: string; inst: string; memberCode?: string; photoUrl?: string; }[];
+  leadersExecutive: { name: string; role: string; inst: string; memberCode?: string; photoUrl?: string; }[];
+  leadersUnits: { unitName: string; leaders: { name: string; role: string; memberCode?: string; photoUrl?: string; }[] }[];
+  leadersFormer: { name: string; duration: string; contribution: string; memberCode?: string; photoUrl?: string; }[];
   oathTitle?: string;
   oathBody?: string;
   idSignerName?: string;
@@ -177,4 +188,14 @@ export interface AdminInvitation {
   status: 'pending' | 'accepted' | 'declined';
   invitedBy: string;
   timestamp: string;
+}
+
+export function getMemberBadgeText(member: MemberRegistration): string {
+  if (member.badgeText && member.badgeText.trim() !== '') {
+    return member.badgeText;
+  }
+  if (member.roleTag === 'super_admin') return 'সুপার এডমিন';
+  if (member.roleTag === 'coordinator_admin') return 'সমন্বয়কারী এডমিন';
+  if (member.roleTag === 'volunteer') return 'স্বেচ্ছাসেবী / শুভাকাঙ্ক্ষী';
+  return 'প্রাথমিক সদস্য';
 }
