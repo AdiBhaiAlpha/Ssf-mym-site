@@ -25,7 +25,7 @@ export interface Blog {
   date: string;
   image: string;
   tags: string[];
-  status: 'published' | 'draft';
+  status: 'published' | 'pending' | 'draft' | 'rejected';
   readingTime: number;
   comments: Comment[];
   views: number;
@@ -113,6 +113,7 @@ export interface MemberRegistration {
   academicYear: string;
   address: string;
   dob: string;
+  bloodGroup?: string;
   type: 'member' | 'volunteer';
   status: 'pending' | 'verified' | 'rejected';
   appliedAt: string;
@@ -120,6 +121,8 @@ export interface MemberRegistration {
   roleTag?: 'super_admin' | 'coordinator_admin' | 'member' | 'volunteer';
   badgeText?: string;
   editHistory?: EditHistoryEntry[];
+  resetRequested?: boolean;
+  resetApproved?: boolean;
 }
 
 export interface AuditLog {

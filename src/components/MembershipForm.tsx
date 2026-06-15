@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
-import { UserPlus, ShieldAlert, CheckCircle2, Search, UserCheck, RefreshCw, X, ArrowRight, ShieldCheck, HeartHandshake, Landmark, FileCheck } from 'lucide-react';
+import { UserPlus, ShieldAlert, CheckCircle2, Search, UserCheck, RefreshCw, X, ArrowRight, ShieldCheck, HeartHandshake, Landmark, FileCheck, Clock } from 'lucide-react';
 import { MemberRegistration } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface MembershipFormProps {
   onRegisterMember: (registration: Omit<MemberRegistration, 'id' | 'status' | 'appliedAt'>) => Promise<MemberRegistration | null>;
   membersList: MemberRegistration[];
+  setCurrentTab?: (tab: string) => void;
 }
 
-export default function MembershipForm({ onRegisterMember, membersList }: MembershipFormProps) {
+export default function MembershipForm({ onRegisterMember, membersList, setCurrentTab }: MembershipFormProps) {
   // Application modal state
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
+  const [duplicateEmailError, setDuplicateEmailError] = useState(false);
 
   // Application forms State
   const [name, setName] = useState('');
@@ -22,6 +24,7 @@ export default function MembershipForm({ onRegisterMember, membersList }: Member
   const [academicYear, setAcademicYear] = useState('');
   const [address, setAddress] = useState('');
   const [dob, setDob] = useState('');
+  const [bloodGroup, setBloodGroup] = useState('');
   const [type, setType] = useState<'member' | 'volunteer'>('member');
 
   const [appliedSuccess, setAppliedSuccess] = useState(false);
@@ -50,6 +53,17 @@ export default function MembershipForm({ onRegisterMember, membersList }: Member
       return;
     }
 
+    // Check if duplicate email already exists / pending
+    if (emailVal) {
+      const emailLower = emailVal.toLowerCase().trim();
+      const duplicateExists = membersList.some(m => m.email?.toLowerCase().trim() === emailLower);
+      if (duplicateExists) {
+        setDuplicateEmailError(true);
+        return;
+      }
+    }
+
+    setDuplicateEmailError(false);
     setSubmitting(true);
     const added = await onRegisterMember({
       name: nameVal,
@@ -61,6 +75,7 @@ export default function MembershipForm({ onRegisterMember, membersList }: Member
       academicYear: academicYear.trim(),
       address: address.trim(),
       dob,
+      bloodGroup: bloodGroup.trim(),
       type
     });
     setSubmitting(false);
@@ -77,6 +92,7 @@ export default function MembershipForm({ onRegisterMember, membersList }: Member
       setAcademicYear('');
       setAddress('');
       setDob('');
+      setBloodGroup('');
     }
   };
 
@@ -205,16 +221,73 @@ export default function MembershipForm({ onRegisterMember, membersList }: Member
                 className="border-t border-zinc-250 dark:border-zinc-800 pt-4"
               >
                 {verifiedMember ? (
-                  <div className="bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-400 p-4 border border-emerald-200 dark:border-emerald-800/40 rounded text-xs space-y-2">
-                    <div className="flex items-center gap-1.5 font-bold text-emerald-700 dark:text-emerald-450">
-                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                      <span>সক্রিয় এবং রেজিস্টার্ড বৈপ্লবিক সদস্য</span>
+                  <div className="bg-zinc-50 dark:bg-zinc-900/40 text-zinc-800 dark:text-zinc-200 p-4 border border-zinc-200 dark:border-zinc-800 rounded text-xs space-y-3">
+                    <div className="flex items-center gap-1.5 font-bold text-emerald-600 dark:text-emerald-450">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>অনুমোদিত সক্রিয় সদস্যপদ (Verified Member)</span>
                     </div>
-                    <ul className="space-y-1 font-mono text-[11px] text-zinc-700 dark:text-zinc-350 bg-white/60 dark:bg-zinc-900/60 p-2.5 rounded border border-emerald-100/50 dark:border-zinc-800/40">
-                      <li><strong className="font-sans text-zinc-500">নাম:</strong> {verifiedMember.name}</li>
-                      <li><strong className="font-sans text-zinc-500">শিক্ষাঙ্গন:</strong> {verifiedMember.institution}</li>
-                      <li><strong className="font-sans text-zinc-500">অবস্থা:</strong> <span className="text-emerald-600 font-bold">অনুমোদিত (সক্রিয়)</span></li>
-                    </ul>
+                    <div className="space-y-1.5 text-[11px] text-zinc-700 dark:text-zinc-300 bg-white dark:bg-zinc-950 p-3 rounded border border-zinc-200 dark:border-zinc-850 shadow-xs">
+                      <div className="flex justify-between border-b border-zinc-100 dark:border-zinc-900 pb-1">
+                        <span className="text-zinc-400 mr-2 font-medium">নাম:</span>
+                        <strong className="text-zinc-900 dark:text-zinc-100 text-right">{verifiedMember.name}</strong>
+                      </div>
+                      <div className="flex justify-between border-b border-zinc-100 dark:border-zinc-900 pb-1">
+                        <span className="text-zinc-400 mr-2 font-medium">মোবাইল নম্বর:</span>
+                        <span className="font-mono text-zinc-900 dark:text-zinc-100 text-right">{verifiedMember.mobile}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-zinc-100 dark:border-zinc-900 pb-1">
+                        <span className="text-zinc-400 mr-2 font-medium">শিক্ষা প্রতিষ্ঠান:</span>
+                        <span className="text-zinc-900 dark:text-zinc-100 text-right">{verifiedMember.institution}</span>
+                      </div>
+                      {verifiedMember.department && (
+                        <div className="flex justify-between border-b border-zinc-100 dark:border-zinc-900 pb-1">
+                          <span className="text-zinc-400 mr-2 font-medium">শ্রেণী / বর্ষ:</span>
+                          <span className="text-zinc-900 dark:text-zinc-100 text-right">{verifiedMember.department}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between border-b border-zinc-100 dark:border-zinc-900 pb-1">
+                        <span className="text-zinc-400 mr-2 font-medium">জন্ম তারিখ (DOB):</span>
+                        <span className="text-zinc-900 dark:text-zinc-100 text-right">{verifiedMember.dob || 'সংগৃহীত নয়'}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-zinc-100 dark:border-zinc-900 pb-1">
+                        <span className="text-zinc-400 mr-2 font-medium">রক্তের গ্রুপ:</span>
+                        <span className="text-rose-600 dark:text-rose-450 font-bold text-right">{verifiedMember.bloodGroup || 'সংগৃহীত নয়'}</span>
+                      </div>
+                      <div className="flex justify-between pb-1">
+                        <span className="text-zinc-400 mr-2 font-medium">অবস্থা:</span>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-bold text-right">অনুমোদিত ও ভেরিফাইড</span>
+                      </div>
+                    </div>
+
+                    {/* Public Account Edit History Log */}
+                    <div className="space-y-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                      <h4 className="text-[10px] font-extrabold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-rose-500" />
+                        <span>সদস্য অ্যাকাউন্ট পরিবর্তনের ইতিহাস (Public Change Log)</span>
+                      </h4>
+                      
+                      {!verifiedMember.editHistory || verifiedMember.editHistory.length === 0 ? (
+                        <div className="p-3 bg-zinc-100/50 dark:bg-zinc-900/30 rounded border border-zinc-200 dark:border-zinc-800/40 text-[10px] text-zinc-500 text-center italic">
+                          অ্যাকাউন্ট প্রোফাইলে পরিবর্তনের কোনো প্রকাশ্য পূর্ব রেকর্ড পাওয়া যায়নি।
+                        </div>
+                      ) : (
+                        <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                          {verifiedMember.editHistory.map((item: any, index: number) => (
+                            <div key={index} className="bg-white dark:bg-zinc-900 p-2 text-[10px] rounded border border-zinc-150 dark:border-zinc-850 leading-relaxed font-sans">
+                              <div className="flex justify-between items-center text-[9px] text-zinc-500 mb-1 font-mono">
+                                <span>সম্পাদনা করেছেন: {item.editedBy || 'সদস্য নিজে'}</span>
+                                <span>{item.timestamp}</span>
+                              </div>
+                              <div className="text-zinc-800 dark:text-zinc-200 text-[11px]">
+                                <span className="font-bold text-rose-600 dark:text-rose-400 mr-1">{item.field}</span> ক্ষেত্রটি{' '}
+                                <span className="line-through text-zinc-400 dark:text-zinc-500 bg-zinc-100 dark:bg-zinc-950 px-1 rounded font-mono font-bold">"{item.oldValue}"</span> হতে{' '}
+                                <span className="text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/10 dark:bg-emerald-950/30 px-1 rounded font-mono">"{item.newValue}"</span> করা হয়েছে।
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div className="bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400 p-4 border border-rose-200 dark:border-rose-900/30 rounded text-xs leading-relaxed space-y-1">
@@ -332,6 +405,30 @@ export default function MembershipForm({ onRegisterMember, membersList }: Member
                 ) : (
                   <form onSubmit={handleSubmit} className="space-y-4 font-sans text-xs">
                     
+                    {duplicateEmailError && (
+                      <div className="p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200/85 rounded mb-4 text-xs text-amber-800 dark:text-amber-400 space-y-2 font-sans font-medium text-left">
+                        <div className="flex items-center gap-1.5 font-bold text-amber-700 dark:text-amber-300">
+                          <ShieldAlert className="w-4.5 h-4.5 shrink-0 text-amber-600 dark:text-amber-500" />
+                          <span>আবেদন পেন্ডিং রয়েছে / Already Registered</span>
+                        </div>
+                        <p className="text-[11px] leading-relaxed text-zinc-700 dark:text-zinc-350">
+                          আপনার একাউন্ট ক্রিয়েশন পেন্ডিং আছে, দয়া করে সভাপতি কিংবা সাধারণ সম্পাদক এর সাথে যোগাযোগ করুন।
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsFormModalOpen(false);
+                            setDuplicateEmailError(false);
+                            if (setCurrentTab) setCurrentTab('contact');
+                          }}
+                          className="mt-1 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded text-[10px] shadow-sm transition flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>যোগাযোগ পেইজে যান</span>
+                          <ArrowRight className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+                    
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-300 mb-1 font-mono uppercase tracking-wider">আবেদনের ক্যাটাগরি *</label>
@@ -379,7 +476,7 @@ export default function MembershipForm({ onRegisterMember, membersList }: Member
                           type="email"
                           required
                           value={email}
-                          onChange={(e) => setEmail(e.target.value)}
+                          onChange={(e) => { setEmail(e.target.value); setDuplicateEmailError(false); }}
                           className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-white rounded focus:outline-none"
                           placeholder="name@example.com"
                         />
@@ -437,9 +534,10 @@ export default function MembershipForm({ onRegisterMember, membersList }: Member
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-300 mb-1 font-mono uppercase tracking-wider">জন্ম তারিখ</label>
+                        <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-300 mb-1 font-mono uppercase tracking-wider">জন্ম তারিখ *</label>
                         <input
                           type="date"
+                          required
                           value={dob}
                           onChange={(e) => setDob(e.target.value)}
                           className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 text-zinc-905 dark:text-white rounded focus:outline-none"
@@ -447,16 +545,35 @@ export default function MembershipForm({ onRegisterMember, membersList }: Member
                       </div>
 
                       <div>
-                        <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-300 mb-1 font-mono uppercase tracking-wider">ঠিকানা *</label>
-                        <input
-                          type="text"
-                          required
-                          value={address}
-                          onChange={(e) => setAddress(e.target.value)}
-                          className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-white rounded focus:outline-none"
-                          placeholder="বর্তমান মেসের নাম বা স্থানীয় ঠিকানা"
-                        />
+                        <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-300 mb-1 font-mono uppercase tracking-wider">রক্তের গ্রুপ (ঐচ্ছিক)</label>
+                        <select
+                          value={bloodGroup}
+                          onChange={(e) => setBloodGroup(e.target.value)}
+                          className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-white rounded focus:outline-none font-sans"
+                        >
+                          <option value="">নির্বাচন করুন (ঐচ্ছিক)</option>
+                          <option value="A+">A+ (এ পজিটিভ)</option>
+                          <option value="A-">A- (এ নেগেটিভ)</option>
+                          <option value="B+">B+ (বি পজিটিভ)</option>
+                          <option value="B-">B- (বি নেগেটিভ)</option>
+                          <option value="AB+">AB+ (এবি পজিটিভ)</option>
+                          <option value="AB-">AB- (এবি নেগেটিভ)</option>
+                          <option value="O+">O+ (ও পজিটিভ)</option>
+                          <option value="O-">O- (ও নেগেটিভ)</option>
+                        </select>
                       </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-300 mb-1 font-mono uppercase tracking-wider">ঠিকানা *</label>
+                      <input
+                        type="text"
+                        required
+                        value={address}
+                        onChange={(e) => setAddress(e.target.value)}
+                        className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-white rounded focus:outline-none"
+                        placeholder="বর্তমান মেসের নাম বা স্থানীয় ঠিকানা"
+                      />
                     </div>
 
                     <div className="bg-zinc-50 dark:bg-zinc-900 p-3.5 border border-zinc-150 dark:border-zinc-850 rounded leading-normal space-y-1 text-zinc-650 dark:text-zinc-400">

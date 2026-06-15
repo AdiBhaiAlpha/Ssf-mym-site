@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { MemberRegistration } from './types';
 import Navigation from './components/Navigation';
 import BreakingNews from './components/BreakingNews';
 import Hero from './components/Hero';
@@ -542,6 +543,30 @@ export default function App() {
     return false;
   };
 
+  const handleUpdateBlog = async (id: string, updatedBlog: any) => {
+    if (!userEmail) return false;
+    try {
+      await saveFirestoreDoc('blogs', id, updatedBlog);
+
+      // Log
+      const logId = 'log_' + Date.now();
+      const logData = {
+        id: logId,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        action: 'ব্লগ আপডেট/অনুমোদন',
+        user: userEmail,
+        details: `"${updatedBlog.title}" নিবন্ধটির স্থিতি আপডেট করা হয়েছে।`
+      };
+      await saveFirestoreDoc('logs', logId, logData);
+
+      await fetchDatabase();
+      return true;
+    } catch (e) {
+      console.error(e);
+    }
+    return false;
+  };
+
   const handleAddComment = async (blogId: string, authorName: string, authorEmail: string, text: string) => {
     try {
       const matchedBlog = db?.blogs?.find(b => b.id === blogId);
@@ -924,10 +949,19 @@ export default function App() {
     try {
       const matched = db?.memberships?.find(m => m.id === id);
       if (matched) {
+        const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+        const logEntry = {
+          timestamp,
+          editedBy: userEmail,
+          field: 'সদস্যপদ অবস্থা / Membership Approval Status',
+          oldValue: matched.status || 'pending',
+          newValue: status === 'verified' ? 'অনুমোদিত ও সক্রিয় (Verified)' : 'প্রত্যাখ্যাত ও নিষ্ক্রিয় (Rejected)'
+        };
         const updated = {
           ...matched,
           status,
-          verifiedAt: new Date().toISOString().replace('T', ' ').substring(0, 19)
+          verifiedAt: timestamp,
+          editHistory: [...(matched.editHistory || []), logEntry]
         };
         await saveFirestoreDoc('memberships', id, updated);
 
@@ -976,6 +1010,17 @@ export default function App() {
     return false;
   };
 
+  const handleUpdateMember = async (updated: MemberRegistration) => {
+    try {
+      await saveFirestoreDoc('memberships', updated.id, updated);
+      await fetchDatabase();
+      return true;
+    } catch (e) {
+      console.error("Error updating member profile in App.tsx:", e);
+    }
+    return false;
+  };
+
   // Render Section Selector based on currentTab index state and db settings toggling configurations
   const renderTabContent = () => {
     if (!db) return null;
@@ -989,6 +1034,7 @@ export default function App() {
         return (
           <Hero
             news={getFilteredNews()}
+            blogs={getFilteredBlogs()}
             circulars={db.circulars}
             events={getFilteredEvents()}
             setCurrentTab={setCurrentTab}
@@ -1045,6 +1091,7 @@ export default function App() {
           <MembershipForm 
             onRegisterMember={handleRegisterMember} 
             membersList={db.memberships} 
+            setCurrentTab={setCurrentTab}
           />
         ) : (
           <div className="py-16 text-center text-zinc-500 text-xs sm:text-sm">সদস্য ভর্তি ফর্ম লক করা আছে। জেলা দপ্তরে যোগাযোগ করুন।</div>
@@ -1069,9 +1116,12 @@ export default function App() {
               member={loggedInMember}
               onLogout={handleLogout}
               onRefresh={() => fetchDatabase(true)}
+              onUpdateMember={handleUpdateMember}
               circulars={db.circulars}
               books={db.books}
               settings={db.settings}
+              blogs={db.blogs || []}
+              onAddBlog={handleAddBlog}
             />
           ) : (
             <PortalAuth
@@ -1092,6 +1142,7 @@ export default function App() {
             onEditNews={handleEditNews}
             onDeleteNews={handleDeleteNews}
             onAddBlog={handleAddBlog}
+            onUpdateBlog={handleUpdateBlog}
             onDeleteBlog={handleDeleteBlog}
             onApproveComment={handleApproveComment}
             onAddEvent={handleAddEvent}
@@ -1109,12 +1160,14 @@ export default function App() {
             onAddInvitation={handleAddInvitation}
             onInviteAction={handleInviteAction}
             onDeleteInvitation={handleDeleteInvitation}
+            onUpdateMember={handleUpdateMember}
           />
         );
       default:
         return (
           <Hero
             news={getFilteredNews()}
+            blogs={getFilteredBlogs()}
             circulars={db.circulars}
             events={getFilteredEvents()}
             setCurrentTab={setCurrentTab}

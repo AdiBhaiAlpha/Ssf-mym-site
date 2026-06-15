@@ -56,8 +56,11 @@ export default function Navigation({
   const [regInstitution, setRegInstitution] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regType, setRegType] = useState<'member' | 'volunteer'>('member');
+  const [regDob, setRegDob] = useState('');
+  const [regBloodGroup, setRegBloodGroup] = useState('');
   const [regSuccess, setRegSuccess] = useState('');
   const [regLoading, setRegLoading] = useState(false);
+  const [isPendingDuplicate, setIsPendingDuplicate] = useState(false);
 
   const handleCloseModal = () => {
     setShowLoginModal(false);
@@ -66,11 +69,14 @@ export default function Navigation({
     setLoginError('');
     setRecoverySuccess('');
     setRegSuccess('');
+    setIsPendingDuplicate(false);
     setRegName('');
     setRegEmail('');
     setRegMobile('');
     setRegInstitution('');
     setRegPassword('');
+    setRegDob('');
+    setRegBloodGroup('');
   };
 
   const userRole = invitations?.find(
@@ -236,39 +242,59 @@ export default function Navigation({
     setRecoveryLoading(true);
 
     const matchedMember = memberships.find(m => m.email?.toLowerCase() === email && m.status === 'verified');
-    const directResetLog = {
-      id: 'ml_forgot_' + Date.now(),
-      email,
-      status: 'reset_request',
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      details: matchedMember ? 'পাসওয়ার্ড পুনরুদ্ধারের জন্য স্বয়ংক্রিয় নোটিফিকেশন ইমেইল ইভেন্ট জেনারেট করে পাঠানো হয়েছে।' : 'ভুল বা অনিবন্ধিত ইমেইল দ্বারা পাসওয়ার্ড উদ্ধারের চেষ্টা করা হয়েছে।'
-    };
-    try {
-      await saveFirestoreDoc('memberLogins', directResetLog.id, directResetLog);
-    } catch (err) {
-      console.error(err);
-    }
-
-    try {
-      const response = await fetch('/api/member-logins/forgot-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
-      });
-      const data = await response.json();
-      if (response.ok) {
-        setRecoverySuccess(data.message);
+    
+    if (matchedMember) {
+      const memberId = `SSF-MYM-${matchedMember.id.substring(matchedMember.id.length - 5).toUpperCase()}`;
+      
+      // If the admin has already approved the reset, display the ID code as the login password
+      if (matchedMember.resetApproved) {
+        setRecoverySuccess(`আপনার পাসওয়ার্ড রিসেট আবেদনটি পূর্বেই জেলা দপ্তর দ্বারা অনুমোদিত হয়েছে! আপনার সাময়িক লগইন পাসওয়ার্ড হলো আপনার সদস্য আইডি কোড: "${memberId}"। আপনি এই কোড ব্যবহার করেই পাসওয়ার্ড হিসেবে সরাসরি লগইন করতে পারবেন।`);
         setForgotEmail('');
+        setRecoveryLoading(false);
+        try {
+          const directResetLog = {
+            id: 'ml_forgot_' + Date.now(),
+            email,
+            status: 'reset_request_recovery',
+            timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+            details: `মেম্বার নেভিগেশন রিকভারি স্ক্রিন থেকে তার অনুমোদিত রিসেট পাসওয়ার্ড আইডি কোড সফলভাবে উদ্ধার করেছেন।`
+          };
+          await saveFirestoreDoc('memberLogins', directResetLog.id, directResetLog);
+        } catch (err) {}
+        return;
+      }
+
+      // If they have already requested reset and it's pending
+      if (matchedMember.resetRequested) {
+        setLoginError('আপনার পাসওয়ার্ড রিসেট আবেদনটি ইতিমধ্যে সাবমিট করা হয়েছে এবং জেলা দপ্তরে অপেক্ষমান (Pending) আছে। দয়া করে জেলা কমিটির সভাপতি অথবা সাধারণ সম্পাদকের সাথে যোগাযোগ করুন।');
         setRecoveryLoading(false);
         return;
       }
-    } catch (err) {
-      console.error(err);
-    }
 
-    if (matchedMember) {
-      setRecoverySuccess(`বিপ্লবী শুভেচ্ছা, কমরেড ${matchedMember.name}। পাসওয়ার্ড পুনরুদ্ধারের লিংক ও নির্দেশনাবলী আপনার নিবন্ধিত ইমেইল এড্রেসে (${email}) প্রেরণ করা হয়েছে। দয়া করে স্প্যাম ফোল্ডারসহ ইনবক্স চেক করুন।`);
-      setForgotEmail('');
+      // Otherwise, request reset
+      try {
+        const updatedMember = {
+          ...matchedMember,
+          resetRequested: true,
+          resetApproved: false
+        };
+        await saveFirestoreDoc('memberships', matchedMember.id, updatedMember);
+
+        const directResetLog = {
+          id: 'ml_forgot_' + Date.now(),
+          email,
+          status: 'reset_request',
+          timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+          details: `কমরেড "${matchedMember.name}" এর জন্য নতুন পাসওয়ার্ড রিসেট আবেদন জমা হয়েছে (নেভিগেশন থেকে)।`
+        };
+        await saveFirestoreDoc('memberLogins', directResetLog.id, directResetLog);
+        
+        setRecoverySuccess(`কমরেড ${matchedMember.name}, আপনার পাসওয়ার্ড রিসেট করার আবেদনটি সফলভাবে জেলা দপ্তরে জমা হয়েছে। জেলা দপ্তর সেল থেকে এটি অনুমোদন দেওয়ার পর আপনার সদস্য আইডি কোডটিই ("${memberId}") সাময়িক পাসওয়ার্ড হিসেবে কার্যকর হবে এবং এটি ব্যবহার করে আপনি লগইন করতে পারবেন।`);
+        setForgotEmail('');
+      } catch (err) {
+        console.error(err);
+        setLoginError('দুঃখিত, পাসওয়ার্ড রিসেট রিকোয়েস্ট সাবমিট করার সময় ত্রুটি ঘটেছে। পুনরায় চেষ্টা করুন।');
+      }
     } else {
       setLoginError('দুঃখিত, প্রদত্ত ইমেইলের বিপরীতে ভেরিফাইড সদস্যপদ পাওয়া যায়নি।');
     }
@@ -296,6 +322,16 @@ export default function Navigation({
     setRegLoading(true);
     setLoginError('');
     setRegSuccess('');
+    setIsPendingDuplicate(false);
+
+    const existingMembership = memberships?.some(m => m.email?.toLowerCase().trim() === emailVal);
+    const existingInvitation = invitations?.some(i => i.email?.toLowerCase().trim() === emailVal);
+
+    if (existingMembership || existingInvitation) {
+      setIsPendingDuplicate(true);
+      setRegLoading(false);
+      return;
+    }
 
     try {
       if (onRegisterMember) {
@@ -308,7 +344,8 @@ export default function Navigation({
           department: '',
           academicYear: '',
           address: 'অনলাইন সাইনআপ ফর্ম',
-          dob: '',
+          dob: regDob,
+          bloodGroup: regBloodGroup,
           type: regType
         });
 
@@ -318,6 +355,8 @@ export default function Navigation({
           setRegEmail('');
           setRegMobile('');
           setRegInstitution('');
+          setRegDob('');
+          setRegBloodGroup('');
         } else {
           setLoginError('দুঃখিত, আবেদনপত্রটি ডাটাবেজে সাবমিট করা যায়নি। দয়া করে পুনরায় চেষ্টা করুন।');
         }
@@ -932,6 +971,29 @@ export default function Navigation({
               )}
 
               {/* Alerts */}
+              {isPendingDuplicate && (
+                <div className="mb-4 p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-300 dark:border-amber-900 rounded-lg text-zinc-900 dark:text-zinc-350 text-xs leading-relaxed flex flex-col gap-2 font-sans font-medium">
+                  <span className="font-extrabold text-amber-600 dark:text-amber-400 flex items-center gap-1.5 text-xs">
+                    <ShieldAlert className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-500" />
+                    আবেদন পেন্ডিং রয়েছে / Already Registered
+                  </span>
+                  <p className="text-[11px] text-zinc-700 dark:text-zinc-300">
+                    আপনার একাউন্ট ক্রিয়েশন পেন্ডিং আছে, দয়া করে সভাপতি কিংবা সাধারণ সম্পাদক এর সাথে যোগাযোগ করুন।
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowLoginModal(false);
+                      setIsPendingDuplicate(false);
+                      setCurrentTab('contact');
+                    }}
+                    className="mt-2 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-extrabold rounded-md cursor-pointer text-center select-none"
+                  >
+                    যোগাযোগ পেইজে যান →
+                  </button>
+                </div>
+              )}
+
               {loginError && (
                 <div className="mb-4 p-3 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 rounded-lg text-rose-700 dark:text-rose-455 text-xs leading-relaxed flex items-start gap-2">
                   <ShieldAlert className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
@@ -1033,7 +1095,7 @@ export default function Navigation({
                         <input
                           type="text"
                           required
-                          placeholder="जैसेः ইমরান হোসেন"
+                          placeholder="যেমনঃ ইমরান হোসেন"
                           value={regName}
                           onChange={(e) => setRegName(e.target.value)}
                           className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-800 bg-transparent text-zinc-900 dark:text-white rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500 font-sans"
@@ -1081,6 +1143,41 @@ export default function Navigation({
                           onChange={(e) => setRegInstitution(e.target.value)}
                           className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-800 bg-transparent text-zinc-900 dark:text-white rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500"
                         />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                            জন্ম তারিখ (Date of Birth) *
+                          </label>
+                          <input
+                            type="date"
+                            required
+                            value={regDob}
+                            onChange={(e) => setRegDob(e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-805 bg-transparent text-zinc-900 dark:text-white rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500 font-sans"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                            রক্তের গ্রুপ (Blood Group) (ঐচ্ছিক)
+                          </label>
+                          <select
+                            value={regBloodGroup}
+                            onChange={(e) => setRegBloodGroup(e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500 font-sans"
+                          >
+                            <option value="">নির্বাচন করুন (ঐচ্ছিক)</option>
+                            <option value="A+">A+ (এ পজিটিভ)</option>
+                            <option value="A-">A- (এ নেগেটিভ)</option>
+                            <option value="B+">B+ (বি পজিটিভ)</option>
+                            <option value="B-">B- (বি নেগেটিভ)</option>
+                            <option value="AB+">AB+ (এবি পজিটিভ)</option>
+                            <option value="AB-">AB- (এবি নেগেটিভ)</option>
+                            <option value="O+">O+ (ও পজিটিভ)</option>
+                            <option value="O-">O- (ও নেগেটিভ)</option>
+                          </select>
+                        </div>
                       </div>
 
                       <div>

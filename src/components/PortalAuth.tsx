@@ -121,40 +121,50 @@ export default function PortalAuth({ memberships, onLogin }: PortalAuthProps) {
     setLoading(true);
 
     const matchedMember = memberships.find(m => m.email?.toLowerCase() === cleanEmail && m.status === 'verified');
-    const directResetLog = {
-      id: 'ml_forgot_' + Date.now(),
-      email: cleanEmail,
-      status: 'reset_request',
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      details: matchedMember ? 'পাসওয়ার্ড পুনরুদ্ধারের জন্য স্বয়ংক্রিয় নোটিফিকেশন ইমেইল ইভেন্ট জেনারেট করে পাঠানো হয়েছে।' : 'ভুল বা অনিবন্ধিত ইমেইল দ্বারা পাসওয়ার্ড উদ্ধারের চেষ্টা করা হয়েছে।'
-    };
-    try {
-      await saveFirestoreDoc('memberLogins', directResetLog.id, directResetLog);
-    } catch (err) {
-      console.error(err);
-    }
-
-    try {
-      const response = await fetch('/api/member-logins/forgot-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cleanEmail })
-      });
-      const data = await response.json();
+    
+    if (matchedMember) {
+      const memberId = `SSF-MYM-${matchedMember.id.substring(matchedMember.id.length - 5).toUpperCase()}`;
       
-      if (response.ok) {
-        setSuccessMsg(data.message || 'পাসওয়ার্ড পুনরুদ্ধারের লিংক সফলভাবে পাঠানো হয়েছে।');
+      // If the admin has already approved the reset, display the ID code as the login password
+      if (matchedMember.resetApproved) {
+        setSuccessMsg(`আপনার পাসওয়ার্ড রিসেট আবেদনটি পূর্বেই জেলা দপ্তর দ্বারা অনুমোদিত হয়েছে! আপনার সাময়িক লগইন পাসওয়ার্ড হলো আপনার সদস্য আইডি কোড: "${memberId}"। আপনি এই কোড ব্যবহার করেই পাসওয়ার্ড হিসেবে সরাসরি লগইন করতে পারবেন।`);
         setEmail('');
+        setLoading(false);
+        logMemberLoginDirect(cleanEmail, 'success_recovery', 'মেম্বার রিকভারি স্ক্রিন থেকে তার অনুমোদিত রিসেট পাসওয়ার্ড আইডি কোড সফলভাবে উদ্ধার করেছেন।');
+        return;
+      }
+
+      // If they have already requested reset and it's pending
+      if (matchedMember.resetRequested) {
+        setErrorMsg('আপনার পাসওয়ার্ড রিসেট আবেদনটি ইতিমধ্যে সাবমিট করা হয়েছে এবং জেলা দপ্তরে অপেক্ষমান (Pending) আছে। দয়া করে জেলা কমিটির সভাপতি অথবা সাধারণ সম্পাদকের সাথে যোগাযোগ করুন।');
         setLoading(false);
         return;
       }
-    } catch (err) {
-      console.error(err);
-    }
 
-    if (matchedMember) {
-      setSuccessMsg(`বিপ্লবী শুভেচ্ছা, কমরেড ${matchedMember.name}। পাসওয়ার্ড পুনরুদ্ধারের লিংক ও নির্দেশনাবলী আপনার নিবন্ধিত ইমেইল এড্রেসে (${cleanEmail}) প্রেরণ করা হয়েছে। দয়া করে স্প্যাম ফোল্ডারসহ ইনবক্স চেক করুন।`);
-      setEmail('');
+      // Otherwise, log a new reset request
+      try {
+        const updatedMember = {
+          ...matchedMember,
+          resetRequested: true,
+          resetApproved: false
+        };
+        await saveFirestoreDoc('memberships', matchedMember.id, updatedMember);
+
+        const directResetLog = {
+          id: 'ml_forgot_' + Date.now(),
+          email: cleanEmail,
+          status: 'reset_request',
+          timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+          details: `কমরেড "${matchedMember.name}" এর জন্য নতুন পাসওয়ার্ড রিসেট আবেদন জমা হয়েছে। এডমিন অনুমোদনের পর আইডি কোড দিয়ে লগইন কার্যকর হবে।`
+        };
+        await saveFirestoreDoc('memberLogins', directResetLog.id, directResetLog);
+        
+        setSuccessMsg(`কমরেড ${matchedMember.name}, আপনার পাসওয়ার্ড রিসেট করার আবেদনটি সফলভাবে জেলা দপ্তরে জমা হয়েছে। জেলা দপ্তর সেল থেকে এটি অনুমোদন দেওয়ার পর আপনার সদস্য আইডি কোডটিই ("${memberId}") সাময়িক পাসওয়ার্ড হিসেবে কার্যকর হবে এবং এটি ব্যবহার করে আপনি লগইন করতে পারবেন।`);
+        setEmail('');
+      } catch (err) {
+        console.error(err);
+        setErrorMsg('দুঃখিত, পাসওয়ার্ড রিসেট রিকোয়েস্ট সাবমিট করার সময় ত্রুটি ঘটেছে। পুনরায় চেষ্টা করুন।');
+      }
     } else {
       setErrorMsg('দুঃখিত, প্রদত্ত ইমেইলের বিপরীতে ভেরিফাইড সদস্যপদ পাওয়া যায়নি।');
     }

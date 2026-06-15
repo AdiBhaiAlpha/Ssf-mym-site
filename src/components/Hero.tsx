@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Newspaper, ChevronRight, BookOpen, UserPlus, PhoneCall, HelpCircle, CalendarClock, History } from 'lucide-react';
-import { News, Circular, Event } from '../types';
+import { News, Circular, Event, Blog } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface HeroProps {
   news: News[];
+  blogs?: Blog[];
   circulars: Circular[];
   events: Event[];
   setCurrentTab: (tab: string) => void;
@@ -12,10 +13,18 @@ interface HeroProps {
   slogans?: string[];
 }
 
-export default function Hero({ news, circulars, events, setCurrentTab, aboutText, slogans }: HeroProps) {
-  // Find single featured news or default to first news
-  const featuredArticle = news.find(n => n.isFeatured) || news[0];
-  const sideArticles = news.filter(n => n.id !== (featuredArticle?.id)).slice(0, 3);
+export default function Hero({ news, blogs = [], circulars, events, setCurrentTab, aboutText, slogans }: HeroProps) {
+  const approvedBlogs = blogs.filter(b => !b.status || b.status === "published");
+
+  // Combine news and approved blogs, then sort by date descending
+  const combinedArticles = [
+    ...news.map(n => ({ ...n, itemType: 'news' as const })),
+    ...approvedBlogs.map(b => ({ ...b, itemType: 'blog' as const }))
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  // Find single featured news/blog or default to first
+  const featuredArticle = combinedArticles.find(n => ('isFeatured' in n) && (n as any).isFeatured) || combinedArticles[0];
+  const sideArticles = combinedArticles.filter(n => n.id !== (featuredArticle?.id)).slice(0, 3);
   const recentNotices = circulars.slice(0, 2);
   const nextEvent = events.filter(e => e.status === 'upcoming')[0];
 
@@ -115,7 +124,7 @@ export default function Hero({ news, circulars, events, setCurrentTab, aboutText
                 onClick={() => setCurrentTab('news')}
               >
                 <div className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono uppercase tracking-wider mb-1">
-                  {art.category === 'campus' ? 'ক্যাম্পাস' : art.category === 'political' ? 'রাজনৈতিক' : 'সাংগঠনিক'}
+                  {art.category === 'campus' ? 'ক্যাম্পাস' : art.category === 'political' ? 'রাজনৈতিক' : art.category === 'organizational' ? 'সাংগঠনিক' : (art.category || 'ব্লগ')}
                 </div>
                 <h4 className="text-base font-bold text-zinc-800 dark:text-zinc-200 group-hover:text-rose-600 dark:group-hover:text-rose-500 transition-colors line-clamp-2">
                   {art.title}

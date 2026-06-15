@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Shield, ToggleLeft, ToggleRight, Settings, PlusCircle, Pencil, Trash2, Calendar, FileText, BookOpen, Clock, Users, Activity, MessageSquare, Image, RefreshCw, AlertTriangle, Eye, Check, X, ShieldAlert, Upload, Download, BarChart3 } from 'lucide-react';
-import { News, Blog, Event, Book, Circular, GalleryItem, MemberRegistration, AuditLog, PageVisit, WebSettings, OrgWing, MemberLoginLog } from '../types';
+import { Shield, ToggleLeft, ToggleRight, Settings, PlusCircle, Pencil, Trash2, Calendar, FileText, BookOpen, Clock, Users, Activity, MessageSquare, Image, RefreshCw, AlertTriangle, Eye, Check, X, ShieldAlert, Upload, Download, BarChart3, TrendingUp, Newspaper, ArrowRight, Zap, Lightbulb, Droplets, Smartphone, Mail, User, MapPin, UserPlus } from 'lucide-react';
+import { News, Blog, Event, Book, Circular, GalleryItem, MemberRegistration, AuditLog, PageVisit, WebSettings, OrgWing, MemberLoginLog, getMemberBadgeText } from '../types';
+import CardVerificationModal from './CardVerificationModal';
 
 interface AdminDashboardProps {
   db: {
@@ -29,6 +30,7 @@ interface AdminDashboardProps {
   onEditNews: (id: string, article: Partial<News>) => Promise<boolean>;
   onDeleteNews: (id: string) => Promise<boolean>;
   onAddBlog: (post: Omit<Blog, 'id' | 'views' | 'comments' | 'date'>) => Promise<boolean>;
+  onUpdateBlog?: (id: string, updatedBlog: any) => Promise<boolean>;
   onDeleteBlog: (id: string) => Promise<boolean>;
   onApproveComment: (blogId: string, commentId: string) => Promise<boolean>;
   onAddEvent: (event: Omit<Event, 'id' | 'registrants'>) => Promise<boolean>;
@@ -43,6 +45,7 @@ interface AdminDashboardProps {
   onDeleteGallery: (id: string) => Promise<boolean>;
   onVerifyMember: (id: string, status: 'verified' | 'rejected') => Promise<boolean>;
   onDeleteMember: (id: string) => Promise<boolean>;
+  onUpdateMember?: (updated: MemberRegistration) => Promise<boolean>;
 }
 
 interface FileUploaderProps {
@@ -129,6 +132,7 @@ export default function AdminDashboard({
   onEditNews,
   onDeleteNews,
   onAddBlog,
+  onUpdateBlog,
   onDeleteBlog,
   onApproveComment,
   onAddEvent,
@@ -146,9 +150,21 @@ export default function AdminDashboard({
   onAddInvitation,
   onInviteAction,
   onDeleteInvitation,
+  onUpdateMember,
 }: AdminDashboardProps) {
   const [activeSubTab, setActiveSubTab] = useState<'content' | 'settings' | 'members' | 'comments' | 'logs' | 'analytics' | 'activity' | 'invitations'>('content');
-  const [activeModel, setActiveModel] = useState<'news' | 'blog' | 'event' | 'book' | 'circular' | 'gallery'>('news');
+  const [activeModel, setActiveModel] = useState<'news' | 'blog' | 'event' | 'book' | 'circular' | 'gallery' | 'transfer'>('news');
+
+  // States for Verified Membership Badge Management
+  const [editingBadgeMemberId, setEditingBadgeMemberId] = useState<string | null>(null);
+  const [selectedBadgePreset, setSelectedBadgePreset] = useState<string>('');
+  const [customBadgeText, setCustomBadgeText] = useState<string>('');
+
+  // States for real-time leader mention suggestions search
+  const [leaderSearchText, setLeaderSearchText] = useState<string>('');
+  const [executiveLeaderSearchText, setExecutiveLeaderSearchText] = useState<string>('');
+  const [unitLead1SearchText, setUnitLead1SearchText] = useState<string>('');
+  const [unitLead2SearchText, setUnitLead2SearchText] = useState<string>('');
 
   // Form states for invitation
   const [inviteEmail, setInviteEmail] = useState('');
@@ -179,6 +195,196 @@ export default function AdminDashboard({
   const [activitySearch, setActivitySearch] = useState('');
   const [activityFilter, setActivityFilter] = useState<'all' | 'success' | 'failed' | 'reset_request'>('all');
 
+  // States for Admin Member Management (creation, edit, quick mention mapper)
+  const [showCreateMemberForm, setShowCreateMemberForm] = useState(false);
+  const [newMName, setNewMName] = useState('');
+  const [newMEmail, setNewMEmail] = useState('');
+  const [newMMobile, setNewMMobile] = useState('');
+  const [newMPassword, setNewMPassword] = useState('123456');
+  const [newMInst, setNewMInst] = useState('');
+  const [newMDept, setNewMDept] = useState('');
+  const [newMYear, setNewMYear] = useState('');
+  const [newMAddress, setNewMAddress] = useState('');
+  const [newMDob, setNewMDob] = useState('');
+  const [newMBloodGroup, setNewMBloodGroup] = useState('');
+  const [newMType, setNewMType] = useState<'member' | 'volunteer'>('member');
+  const [newMRoleTag, setNewMRoleTag] = useState<'super_admin' | 'coordinator_admin' | 'member' | 'volunteer'>('member');
+  const [newMBadgeText, setNewMBadgeText] = useState('কর্মী সদস্য');
+  const [newMPhotoUrl, setNewMPhotoUrl] = useState('');
+  const [createMemberSuccess, setCreateMemberSuccess] = useState('');
+  const [createMemberError, setCreateMemberError] = useState('');
+
+  // Editing existing member states
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+  const [editMName, setEditMName] = useState('');
+  const [editMMobile, setEditMMobile] = useState('');
+  const [editMEmail, setEditMEmail] = useState('');
+  const [editMInst, setEditMInst] = useState('');
+  const [editMDept, setEditMDept] = useState('');
+  const [editMYear, setEditMYear] = useState('');
+  const [editMAddress, setEditMAddress] = useState('');
+  const [editMDob, setEditMDob] = useState('');
+  const [editMBloodGroup, setEditMBloodGroup] = useState('');
+  const [editMType, setEditMType] = useState<'member' | 'volunteer'>('member');
+  const [editMRoleTag, setEditMRoleTag] = useState<'super_admin' | 'coordinator_admin' | 'member' | 'volunteer'>('member');
+  const [editMBadgeText, setEditMBadgeText] = useState('');
+  const [editMPhotoUrl, setEditMPhotoUrl] = useState('');
+  const [showMHistoryId, setShowMHistoryId] = useState<string | null>(null);
+
+  // Quick Member Code / Mention search state
+  const [mentionSearchCode, setMentionSearchCode] = useState('');
+  const [previewMemberId, setPreviewMemberId] = useState<string | null>(null);
+
+  const startEditingMember = (member: MemberRegistration) => {
+    setEditingMemberId(member.id);
+    setEditMName(member.name || '');
+    setEditMMobile(member.mobile || '');
+    setEditMEmail(member.email || '');
+    setEditMInst(member.institution || '');
+    setEditMDept(member.department || '');
+    setEditMYear(member.academicYear || '');
+    setEditMAddress(member.address || '');
+    setEditMDob(member.dob || '');
+    setEditMType(member.type || 'member');
+    setEditMRoleTag(member.roleTag || 'member');
+    setEditMBadgeText(member.badgeText || '');
+    setEditMPhotoUrl(member.photoUrl || '');
+  };
+
+  const handleCreateMemberSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreateMemberSuccess('');
+    setCreateMemberError('');
+    if (!newMName || !newMMobile) {
+      setCreateMemberError('নাম এবং মোবাইল নম্বর অবশ্যই প্রদান করতে হবে।');
+      return;
+    }
+    const id = 'member_' + Date.now();
+    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const dateToday = new Date().toISOString().split('T')[0];
+
+    const newReg: MemberRegistration = {
+      id,
+      name: newMName,
+      mobile: newMMobile,
+      email: newMEmail || `${id}@ssf-mym.org`,
+      password: newMPassword || '123456',
+      photoUrl: newMPhotoUrl || undefined,
+      institution: newMInst || 'ময়মনসিংহ জেলা সংসদ',
+      department: newMDept || 'N/A',
+      academicYear: newMYear || 'N/A',
+      address: newMAddress || 'ময়মনসিংহ',
+      dob: newMDob || '',
+      bloodGroup: newMBloodGroup || '',
+      type: newMType,
+      status: 'verified',
+      appliedAt: dateToday,
+      verifiedAt: dateToday,
+      roleTag: newMRoleTag,
+      badgeText: newMBadgeText || undefined,
+      editHistory: [{
+        timestamp,
+        editedBy: userEmail || 'এডমিন',
+        field: 'সদস্যপদ সৃষ্টি',
+        oldValue: 'নাই',
+        newValue: `এডমিন কর্তৃক সরাসরি সৃষ্টি (${newMRoleTag})`
+      }]
+    };
+
+    if (onUpdateMember) {
+      const ok = await onUpdateMember(newReg);
+      if (ok) {
+        setCreateMemberSuccess(`সফলভাবে "${newMName}" এর সদস্য আইডি তৈরি করা হয়েছে ও ভেরিফাই করা হয়েছে!`);
+        // Reset fields
+        setNewMName('');
+        setNewMEmail('');
+        setNewMMobile('');
+        setNewMPassword('123456');
+        setNewMInst('');
+        setNewMDept('');
+        setNewMYear('');
+        setNewMAddress('');
+        setNewMDob('');
+        setNewMBloodGroup('');
+        setNewMPhotoUrl('');
+        setTimeout(() => {
+          setCreateMemberSuccess('');
+          setShowCreateMemberForm(false);
+        }, 2000);
+      } else {
+        setCreateMemberError('সদস্য আইডি তৈরি করতে ডাটাবেজে সমস্যা হয়েছে।');
+      }
+    } else {
+      setCreateMemberError('সদস্য আপডেট সিস্টেম নিষ্ক্রিয় রয়েছে।');
+    }
+  };
+
+  const handleEditMemberSave = async (member: MemberRegistration) => {
+    const changes: any[] = [];
+    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const editedBy = userEmail || 'এডমিন';
+
+    const fields = [
+      { key: 'name', label: 'নাম', val: editMName },
+      { key: 'mobile', label: 'মোবাইল', val: editMMobile },
+      { key: 'email', label: 'ইমেইল', val: editMEmail },
+      { key: 'institution', label: 'প্রতিষ্ঠান', val: editMInst },
+      { key: 'department', label: 'শ্রেণি/বিভাগ', val: editMDept },
+      { key: 'academicYear', label: 'সেশন', val: editMYear },
+      { key: 'address', label: 'ঠিকানা', val: editMAddress },
+      { key: 'dob', label: 'DOB/রক্তের গ্রুপ', val: editMDob },
+      { key: 'photoUrl', label: 'ছবির লিংক', val: editMPhotoUrl },
+      { key: 'type', label: 'প্রকার', val: editMType },
+      { key: 'roleTag', label: 'রোল ট্যাগ', val: editMRoleTag },
+      { key: 'badgeText', label: 'ব্যাজ টেক্সট', val: editMBadgeText },
+    ];
+
+    fields.forEach((f) => {
+      const oldVal = (member as any)[f.key] || '';
+      const newVal = f.val || '';
+      if (oldVal !== newVal) {
+        changes.push({
+          timestamp,
+          editedBy,
+          field: f.label,
+          oldValue: oldVal,
+          newValue: newVal,
+        });
+      }
+    });
+
+    if (changes.length === 0) {
+      setEditingMemberId(null);
+      return;
+    }
+
+    const updatedMemberObj: MemberRegistration = {
+      ...member,
+      name: editMName,
+      mobile: editMMobile,
+      email: editMEmail,
+      institution: editMInst,
+      department: editMDept,
+      academicYear: editMYear,
+      address: editMAddress,
+      dob: editMDob,
+      type: editMType,
+      roleTag: editMRoleTag as any,
+      badgeText: editMBadgeText,
+      photoUrl: editMPhotoUrl || undefined,
+      editHistory: [...(member.editHistory || []), ...changes]
+    };
+
+    if (onUpdateMember) {
+      const ok = await onUpdateMember(updatedMemberObj);
+      if (ok) {
+        setEditingMemberId(null);
+      } else {
+        alert('ডাটাবেজ আপডেট ব্যর্থ হয়েছে।');
+      }
+    }
+  };
+
   // Modal Control States
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingItem, setEditingItem] = useState<any | null>(null);
@@ -189,6 +395,15 @@ export default function AdminDashboard({
   const [formExcerpt, setFormExcerpt] = useState('');
   const [formCategory, setFormCategory] = useState('');
   const [formAuthor, setFormAuthor] = useState('');
+  const [authorSelectType, setAuthorSelectType] = useState<'designation' | 'member' | 'guest' | 'mention'>('designation');
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [manualMemberName, setManualMemberName] = useState('');
+  const [manualMemberId, setManualMemberId] = useState('');
+  const [movingId, setMovingId] = useState<string | null>(null);
+  const [transferDirection, setTransferDirection] = useState<'news_to_blog' | 'blog_to_news'>('news_to_blog');
+  const [transferSourceId, setTransferSourceId] = useState<string>('');
+  const [transferSearchQuery, setTransferSearchQuery] = useState<string>('');
+  const [transferTargetCategory, setTransferTargetCategory] = useState<string>('');
   const [formImage, setFormImage] = useState('');
   const [formTags, setFormTags] = useState('');
   
@@ -375,6 +590,178 @@ export default function AdminDashboard({
     }
   };
 
+  const handleMoveBlogToNews = async (blog: any) => {
+    if (!confirm(`আপনি কি সত্যিই "${blog.title}" ব্লগ পোস্টটিকে সংবাদপত্রে মুভ করতে চান? এটি ব্লগ থেকে মুছে সংবাদ তালিকায় যুক্ত হবে।`)) {
+      return;
+    }
+    setMovingId(blog.id);
+    try {
+      let newsCategory: any = 'political';
+      if (blog.category) {
+        const cat = blog.category.toLowerCase();
+        if (cat.includes('political') || cat.includes('রাজনীতি')) newsCategory = 'political';
+        else if (cat.includes('campus') || cat.includes('ক্যাম্পাস')) newsCategory = 'campus';
+        else if (cat.includes('statement') || cat.includes('বিবৃতি')) newsCategory = 'statement';
+        else if (cat.includes('press') || cat.includes('প্রেস') || cat.includes('রিলিজ')) newsCategory = 'press-release';
+        else newsCategory = 'organizational';
+      }
+
+      const successAdd = await onAddNews({
+        title: blog.title,
+        content: blog.content,
+        excerpt: blog.excerpt || blog.title.substring(0, 100),
+        category: newsCategory,
+        author: blog.author,
+        image: blog.image || 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=800',
+        tags: blog.tags || [],
+        status: 'published',
+        isFeatured: false,
+        pdfUrl: ''
+      });
+
+      if (successAdd) {
+        await onDeleteBlog(blog.id);
+        alert('সফলভাবে ব্লগ পোস্টটিকে সংবাদপত্রে মুভ করা হয়েছে।');
+      } else {
+        alert('সংবাদপত্র তালিকায় যুক্ত করতে ব্যর্থ হয়েছে।');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('সংশোধন ব্যর্থ হয়েছে।');
+    } finally {
+      setMovingId(null);
+    }
+  };
+
+  const handleMoveNewsToBlog = async (news: any) => {
+    if (!confirm(`আপনি কি সত্যিই "${news.title}" সংবাদটিকে ব্লগ/নিবন্ধে মুভ করতে চান? এটি সংবাদপত্র থেকে মুছে ব্লগ তালিকায় যুক্ত হবে।`)) {
+      return;
+    }
+    setMovingId(news.id);
+    try {
+      let blogCategory = 'সাংগঠনিক কলাম';
+      if (news.category) {
+        if (news.category === 'political') blogCategory = 'রাজনৈতিক विश्लेषण';
+        else if (news.category === 'campus') blogCategory = 'ছাত্র আন্দোলন ও ক্যাম্পাস';
+        else if (news.category === 'statement') blogCategory = 'বিবৃতি কলাম';
+        else if (news.category === 'press-release') blogCategory = 'প্রেস রিলিজ নিবন্ধ';
+        else blogCategory = 'সাংগঠনিক সংবাদ';
+      }
+
+      const successAdd = await onAddBlog({
+        title: news.title,
+        content: news.content,
+        excerpt: news.excerpt || news.title.substring(0, 100),
+        category: blogCategory,
+        author: news.author,
+        image: news.image || 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=800',
+        tags: news.tags || [],
+        status: 'published',
+        readingTime: Math.max(2, Math.ceil(news.content.split(/\s+/).length / 200))
+      });
+
+      if (successAdd) {
+        await onDeleteNews(news.id);
+        alert('সফলভাবে সংবাদ পোস্টটিকে ব্লগ/নিবন্ধ তালিকায় মুভ করা হয়েছে।');
+      } else {
+        alert('ব্লগ তালিকায় যুক্ত করতে ব্যর্থ হয়েছে।');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('সংশোধন ব্যর্থ হয়েছে।');
+    } finally {
+      setMovingId(null);
+    }
+  };
+
+  const handleExecuteTransfer = async () => {
+    if (!transferSourceId) {
+      alert('অনুগ্রহ করে একটি উৎস কন্টেন্ট নির্বাচন করুন।');
+      return;
+    }
+
+    if (transferDirection === 'news_to_blog') {
+      const newsItem = db.news.find((n) => n.id === transferSourceId);
+      if (!newsItem) {
+        alert('সোর্স কন্টেন্ট খুঁজে পাওয়া যায়নি!');
+        return;
+      }
+      if (!confirm(`আপনি কি সত্যিই "${newsItem.title}" সংবাদটিকে ব্লগ/নিবন্ধে স্থানান্তরিত করতে চান?`)) {
+        return;
+      }
+
+      setMovingId(newsItem.id);
+      try {
+        const destCat = transferTargetCategory || 'সাংগঠনিক কলাম';
+        const successAdd = await onAddBlog({
+          title: newsItem.title,
+          content: newsItem.content,
+          excerpt: newsItem.excerpt || newsItem.title.substring(0, 100),
+          category: destCat,
+          author: newsItem.author,
+          image: newsItem.image || 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=800',
+          tags: newsItem.tags || [],
+          status: 'published',
+          readingTime: Math.max(2, Math.ceil(newsItem.content.split(/\s+/).length / 200))
+        });
+
+        if (successAdd) {
+          await onDeleteNews(newsItem.id);
+          setTransferSourceId('');
+          setTransferSearchQuery('');
+          alert('সংবাদ পোস্টটি সফলভাবে ব্লগে স্থানান্তরিত হয়েছে।');
+        } else {
+          alert('ব্লগে যুক্ত করতে ব্যর্থ হয়েছে।');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('স্থানান্তর ব্যর্থ হয়েছে।');
+      } finally {
+        setMovingId(null);
+      }
+    } else {
+      const blogItem = db.blogs.find((b) => b.id === transferSourceId);
+      if (!blogItem) {
+        alert('সোর্স কন্টেন্ট খুঁজে পাওয়া যায়নি!');
+        return;
+      }
+      if (!confirm(`আপনি কি সত্যিই "${blogItem.title}" ব্লগ পোস্টটিকে সংবাদপত্র তালিকায় স্থানান্তরিত করতে চান?`)) {
+        return;
+      }
+
+      setMovingId(blogItem.id);
+      try {
+        const destCat = transferTargetCategory || 'political';
+        const successAdd = await onAddNews({
+          title: blogItem.title,
+          content: blogItem.content,
+          excerpt: blogItem.excerpt || blogItem.title.substring(0, 100),
+          category: destCat,
+          author: blogItem.author,
+          image: blogItem.image || 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=800',
+          tags: blogItem.tags || [],
+          status: 'published',
+          isFeatured: false,
+          pdfUrl: ''
+        });
+
+        if (successAdd) {
+          await onDeleteBlog(blogItem.id);
+          setTransferSourceId('');
+          setTransferSearchQuery('');
+          alert('ব্লগ পোস্টটি সফলভাবে সংবাদের তালিকায় স্থানান্তরিত হয়েছে।');
+        } else {
+          alert('সংবাদ তালিকায় যুক্ত করতে ব্যর্থ হয়েছে।');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('স্থানান্তর ব্যর্থ হয়েছে।');
+      } finally {
+        setMovingId(null);
+      }
+    }
+  };
+
   const handleOpenAddModal = () => {
     setEditingItem(null);
     setFormTitle('');
@@ -403,6 +790,12 @@ export default function AdminDashboard({
     setEventVenue('');
     setBookPdfUrl('#');
     setFormIsPrivate(false);
+
+    setAuthorSelectType('designation');
+    setSelectedMemberId(null);
+    setManualMemberName('');
+    setManualMemberId('');
+
     setShowAddModal(true);
   };
 
@@ -419,6 +812,51 @@ export default function AdminDashboard({
     setEventVenue(item.venue || '');
     setBookPdfUrl(item.pdfUrl || '#');
     setFormIsPrivate(!!item.isPrivate);
+
+    if (item.author) {
+      if (item.author.includes('গেস্ট রাইটার') || item.author.includes('Guest Writer') || item.author.includes('গেস্ট') || item.author.includes('কাস্টম')) {
+        setAuthorSelectType('guest');
+        const match = item.author.match(/লেখকঃ\s*(.*?)\s*\((.*?)\)/) || item.author.match(/(.*?)\s*\((.*?)\)/);
+        if (match) {
+          setManualMemberName(match[1].trim());
+          setManualMemberId(match[2].trim());
+        } else {
+          setManualMemberName(item.author.replace('লেখকঃ', '').trim());
+          setManualMemberId('গেস্ট রাইটার');
+        }
+      } else if (item.author.includes('سদস্য আইডি:') || item.author.includes('সদস্য আইডি:') || item.author.includes('ID:')) {
+        setAuthorSelectType('member');
+        const match = item.author.match(/লেখকঃ\s*(.*?)\s*\((?:সদস্য আইডি:|ID:)\s*(.*?)\)/) || item.author.match(/(.*?)\s*\((?:সদস্য আইডি:|ID:)\s*(.*?)\)/);
+        if (match) {
+          setManualMemberName(match[1].trim());
+          setManualMemberId(match[2].trim());
+        } else {
+          setManualMemberName(item.author.replace('লেখকঃ', '').trim());
+          setManualMemberId('');
+        }
+      } else if (item.author.includes('আইডি:') || item.author.includes('মেনশন:') || item.author.includes('পদহীন')) {
+        setAuthorSelectType('mention');
+        const match = item.author.match(/লেখকঃ\s*(.*?)\s*\(((?:আইডি:|মেনশন:|পদহীন:)\s*(.*?))\)/) || item.author.match(/(.*?)\s*\(((?:আইডি:|মেনশন:|পদহীন:)\s*(.*?))\)/);
+        if (match) {
+          setManualMemberName(match[1].trim());
+          const innerIdVal = match[3] || match[2] || '';
+          setManualMemberId(innerIdVal.trim());
+        } else {
+          setManualMemberName(item.author.replace('লেখকঃ', '').trim());
+          setManualMemberId('');
+        }
+      } else {
+        setAuthorSelectType('designation');
+        setManualMemberName('');
+        setManualMemberId('');
+      }
+    } else {
+      setAuthorSelectType('designation');
+      setManualMemberName('');
+      setManualMemberId('');
+    }
+    setSelectedMemberId(null);
+
     setShowAddModal(true);
   };
 
@@ -441,6 +879,17 @@ export default function AdminDashboard({
           image: formImage,
           tags: tagsArray,
           pdfUrl: bookPdfUrl || undefined
+        });
+      } else if (activeModel === 'blog' && onUpdateBlog) {
+        success = await onUpdateBlog(editingItem.id, {
+          ...editingItem,
+          title: formTitle,
+          content: formContent,
+          excerpt: formExcerpt,
+          category: formCategory,
+          author: formAuthor,
+          image: formImage,
+          tags: tagsArray
         });
       } else if (activeModel === 'book' && onEditBook) {
         success = await onEditBook(editingItem.id, {
@@ -574,34 +1023,36 @@ export default function AdminDashboard({
               </button>
               <button
                 onClick={() => setDbResetConfirm(false)}
-                className="px-2.5 py-1 bg-zinc-700 hover:bg-zinc-600 text-white text-[11px] font-bold rounded-xs transition cursor-pointer"
+                className="px-2.5 py-1 bg-zinc-600 hover:bg-zinc-700 text-white text-[11px] font-bold rounded-xs shadow transition cursor-pointer"
               >
-                বাতিল
+                না
               </button>
             </div>
           ) : (
             <button
               onClick={() => setDbResetConfirm(true)}
-              className="px-4 py-2 bg-rose-600/25 border border-rose-600 hover:bg-rose-600 text-white text-xs font-bold rounded shadow transition cursor-pointer"
+              className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 hover:text-rose-500 border border-zinc-700/80 text-zinc-300 text-xs font-bold rounded shadow transition duration-200 cursor-pointer flex items-center gap-1.5"
             >
-              সম্পূর্ণ ডাটাবেজ রিসেট করুন
+              <RefreshCw className="w-3.5 h-3.5 animate-spin-slow" />
+              <span>ডামি ডাটাবেজ রিসেট করুন</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Main Admin Navigation grids */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      {/* Main Grid: Left Navigation / Right Content */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         
-        {/* Left Side Columns: Main Tabs Menu Selector (3/12) */}
-        <div className="lg:col-span-3 space-y-2">
+        {/* Left Column: Sidebar Admin controls (3/12 Columns) */}
+        <div className="lg:col-span-3 space-y-4">
+          
           {[
-            { id: 'content', label: 'কন্টেন্ট ম্যানেজমেন্ট', icon: FileText, visible: true },
-            { id: 'settings', label: 'সাইট ভিজিবিলিটি / লেআউট', icon: Settings, visible: true },
-            { id: 'members', label: 'ভর্তি আবেদনপত্র ({count})'.replace('{count}', db.memberships.filter(m => m.status === 'pending').length.toString()), icon: Users, visible: true },
-            { id: 'comments', label: 'মন্তব্য অনুমোদন ({count})'.replace('{count}', db.blogs.reduce((acc, b) => acc + (b.comments?.filter(c => !c.approved).length || 0), 0).toString()), icon: MessageSquare, visible: true },
-            { id: 'analytics', label: 'ভিজিটর ও সাইট এনালাইটিকস', icon: BarChart3, visible: true },
-            { id: 'activity', label: 'সদস্য অ্যাক্টিভিটি লগ ({count})'.replace('{count}', (db.memberLogins || []).length.toString()), icon: Clock, visible: true },
+            { id: 'content', label: 'কন্টেন্ট কন্ট্রোল প্যানেল', icon: Newspaper, visible: true },
+            { id: 'settings', label: 'ওয়েবসাইট লেআউট সেটিংস', icon: Settings, visible: true },
+            { id: 'members', label: 'সদস্য তালিকা ও মেম্বারশিপ', icon: Users, visible: true },
+            { id: 'comments', label: 'নিবন্ধ মন্তব্য মডারেশন ({count})'.replace('{count}', db.blogs.reduce((acc, curr) => acc + (curr.comments || []).length, 0).toString()), icon: MessageSquare, visible: true },
+            { id: 'analytics', label: 'ভিজিটর ও ভিউ এনালাইটিক্স', icon: TrendingUp, visible: true },
+            { id: 'activity', label: 'মেম্বার লগইনস ও অ্যাক্টিভিটি ({count})'.replace('{count}', (db.memberLogins || []).length.toString()), icon: Clock, visible: true },
             { id: 'logs', label: 'অডিট লগ রিপোর্ট', icon: Activity, visible: true },
             { id: 'invitations', label: 'এডমিন নিয়োগ সেটিংস ({count})'.replace('{count}', ((db as any).invitations || []).filter((i: any) => i.status === 'pending').length.toString()), icon: Shield, visible: isSuperAdmin }
           ].filter(tab => tab.visible).map((tab) => {
@@ -655,36 +1106,47 @@ export default function AdminDashboard({
                   { key: 'event', label: 'কর্মসূচী', index: db.events.length },
                   { key: 'book', label: 'প্রকাশনা লাইব্রেরি', index: db.books.length },
                   { key: 'circular', label: 'সার্কুলার বোর্ড', index: db.circulars.length },
-                  { key: 'gallery', label: 'মিডিয়া', index: db.gallery.length }
+                  { key: 'gallery', label: 'মিডিয়া', index: db.gallery.length },
+                  { key: 'transfer', label: 'ট্রান্সফার হাব', index: db.news.length + db.blogs.length }
                 ].map((pill) => (
                   <button
                     key={pill.key}
                     onClick={() => setActiveModel(pill.key as any)}
-                    className={`px-3 py-1.5 text-xs rounded transition-all cursor-pointer font-semibold ${
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded transition-all cursor-pointer font-semibold ${
                       activeModel === pill.key
                         ? 'bg-rose-600 text-white'
                         : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200'
                     }`}
                   >
-                    {pill.label} ({pill.index})
+                    {pill.key === 'transfer' && <RefreshCw className="w-3 h-3 text-current" />}
+                    <span>{pill.label} ({pill.index})</span>
                   </button>
                 ))}
               </div>
 
               {/* Action commands bar */}
               <div className="flex justify-between items-center bg-zinc-50 dark:bg-zinc-900 p-4 rounded border dark:border-zinc-850">
-                <span className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">
-                  সুপার এডমিন কন্টেন্ট কন্ট্রোল প্যানেল
+                <span className="inline-flex items-center gap-2 text-xs font-semibold text-zinc-600 dark:text-zinc-300">
+                  {activeModel === 'transfer' ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 text-rose-600 animate-spin-slow" style={{ animationDuration: '4s' }} />
+                      <span>পোস্ট কনভার্টার এবং ট্রান্সফার ড্যাশবোর্ড (Post Conversion Hub)</span>
+                    </>
+                  ) : (
+                    <span>সুপার এডমিন কন্টেন্ট কন্ট্রোল প্যানেল</span>
+                  )}
                 </span>
 
                 {/* Except editing news (using modals), block empty news creators */}
-                <button
-                  onClick={handleOpenAddModal}
-                  className="inline-flex items-center space-x-1 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded transition"
-                >
-                  <PlusCircle className="w-3.5 h-3.5" />
-                  <span>যুক্ত করুণ</span>
-                </button>
+                {activeModel !== 'transfer' && (
+                  <button
+                    onClick={handleOpenAddModal}
+                    className="inline-flex items-center space-x-1 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded transition"
+                  >
+                    <PlusCircle className="w-3.5 h-3.5" />
+                    <span>যুক্ত করুণ</span>
+                  </button>
+                )}
               </div>
 
               {/* List grid render list */}
@@ -697,6 +1159,13 @@ export default function AdminDashboard({
                       <p className="text-[10px] text-zinc-400 font-mono mt-0.5">{item.date} • {((item.views || 0) * 10)} ভিউ (রিয়েল: {item.views || 0})</p>
                     </div>
                     <div className="flex gap-2 shrink-0 items-center">
+                      <button
+                        onClick={() => handleMoveNewsToBlog(item)}
+                        disabled={movingId === item.id}
+                        className="p-1 px-2.5 bg-emerald-600/10 hover:bg-emerald-650/20 text-emerald-600 dark:text-emerald-400 border border-emerald-555/20 rounded text-[10px] cursor-pointer font-bold shrink-0"
+                      >
+                        {movingId === item.id ? 'মুভ হচ্ছে...' : 'ব্লগে মুভ করুন'}
+                      </button>
                       <button onClick={() => handleOpenEditModal(item)} className="p-1 px-2 border hover:bg-zinc-100 rounded text-zinc-500 cursor-pointer">সম্পাদনা</button>
                       {deleteConfirm?.id === item.id && deleteConfirm?.type === 'news' ? (
                         <div className="flex items-center gap-1 bg-rose-50 dark:bg-rose-955 px-1.5 py-0.5 border border-rose-200 dark:border-rose-900 rounded-xs">
@@ -713,18 +1182,94 @@ export default function AdminDashboard({
                 {activeModel === 'blog' && db.blogs.map((item) => (
                   <div key={item.id} className="p-4 border border-zinc-150 dark:border-zinc-900 rounded-sm flex justify-between items-center text-xs gap-4 hover:bg-zinc-50/50">
                     <div className="min-w-0">
-                      <span className="text-[10px] uppercase font-mono text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded font-bold">{item.category}</span>
+                      <div className="flex flex-wrap gap-1 items-center">
+                        <span className="text-[10px] uppercase font-mono text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded font-bold mr-1">{item.category}</span>
+                        {item.status === 'pending' ? (
+                          <span className="text-[9px] font-bold text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-950/20 border border-amber-200/50 px-1 py-0.5 rounded">অপেক্ষমান রিভিউ (Pending Review)</span>
+                        ) : item.status === 'rejected' ? (
+                          <span className="text-[9px] font-bold text-rose-700 bg-rose-50 dark:text-rose-450 dark:bg-rose-955 border border-rose-200/50 px-1 py-0.5 rounded">বাতিলকরণ ট্র্যাশ (Rejected)</span>
+                        ) : (
+                          <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-950/20 border border-emerald-200/50 px-1 py-0.5 rounded">পাবলিশড (Published)</span>
+                        )}
+                      </div>
                       <h4 className="font-bold text-sm text-zinc-850 mt-1 truncate">{item.title}</h4>
-                      <p className="text-[10px] text-zinc-400 font-mono mt-0.5">{item.date} • লেখক: {item.author} • ভিউ: {((item.views || 0) * 10)}</p>
+                      <p className="text-[10px] text-zinc-400 font-mono mt-0.5">{item.date} • লেখক: {item.author} ({item.authorEmail || 'সংগঠক'}) • ভিউ: {((item.views || 0) * 10)}</p>
                     </div>
                     <div className="flex gap-2 shrink-0 items-center">
+                      <button
+                        onClick={() => handleMoveBlogToNews(item)}
+                        disabled={movingId === item.id}
+                        className="p-1 px-2.5 bg-rose-600/10 hover:bg-rose-650/20 text-rose-600 dark:text-rose-450 border border-rose-555/25 rounded text-[10px] cursor-pointer font-bold shrink-0"
+                      >
+                        {movingId === item.id ? 'মুভ হচ্ছে...' : 'নিউজে মুভ করুন'}
+                      </button>
+
+                      <button 
+                        onClick={() => handleOpenEditModal(item)} 
+                        className="p-1 px-2 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded text-zinc-500 cursor-pointer text-[10px]"
+                      >
+                        সম্পাদনা
+                      </button>
+
+                      {/* Review Buttons */}
+                      {item.status === 'pending' && (
+                        <div className="flex gap-1">
+                          <button
+                            onClick={async () => {
+                              if (onUpdateBlog) {
+                                await onUpdateBlog(item.id, { ...item, status: 'published' });
+                              }
+                            }}
+                            className="p-1 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded text-[10px] cursor-pointer"
+                          >
+                            অনুমোদন ও প্রকাশ
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (onUpdateBlog) {
+                                await onUpdateBlog(item.id, { ...item, status: 'rejected' });
+                              }
+                            }}
+                            className="p-1 px-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded text-[10px] cursor-pointer"
+                          >
+                            বাতিল
+                          </button>
+                        </div>
+                      )}
+
+                      {item.status === 'rejected' && (
+                        <button
+                          onClick={async () => {
+                            if (onUpdateBlog) {
+                              await onUpdateBlog(item.id, { ...item, status: 'published' });
+                            }
+                          }}
+                          className="p-1 px-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded text-[10px] cursor-pointer"
+                        >
+                          পুনরায় অনুমোদন করুন
+                        </button>
+                      )}
+
+                      {(!item.status || item.status === 'published') && (
+                        <button
+                          onClick={async () => {
+                            if (onUpdateBlog) {
+                              await onUpdateBlog(item.id, { ...item, status: 'pending' });
+                            }
+                          }}
+                          className="p-1 px-2 bg-yellow-600 hover:bg-yellow-700 text-white font-bold rounded text-[10px] cursor-pointer"
+                        >
+                          রিভিউতে পাঠান
+                        </button>
+                      )}
+
                       {deleteConfirm?.id === item.id && deleteConfirm?.type === 'blog' ? (
                         <div className="flex items-center gap-1 bg-rose-50 dark:bg-rose-955 px-1.5 py-0.5 border border-rose-200 dark:border-rose-900 rounded-xs">
                           <button onClick={() => { onDeleteBlog(item.id); setDeleteConfirm(null); }} className="p-1 text-[10px] bg-rose-600 text-white rounded-xs font-bold cursor-pointer">হ্যাঁ</button>
                           <button onClick={() => setDeleteConfirm(null)} className="p-1 text-[10px] bg-zinc-500 text-white rounded-xs font-bold cursor-pointer">না</button>
                         </div>
                       ) : (
-                        <button onClick={() => setDeleteConfirm({ id: item.id, type: 'blog' })} className="p-1 px-2 bg-rose-50 hover:bg-rose-100 rounded text-rose-600 cursor-pointer">মুছুন</button>
+                        <button onClick={() => setDeleteConfirm({ id: item.id, type: 'blog' })} className="p-1 px-2 bg-rose-50 hover:bg-rose-100 rounded text-rose-600 cursor-pointer text-[10px]">মুছুন</button>
                       )}
                     </div>
                   </div>
@@ -793,7 +1338,7 @@ export default function AdminDashboard({
                 {activeModel === 'gallery' && db.gallery.map((item) => (
                   <div key={item.id} className="p-4 border border-zinc-150 dark:border-zinc-900 rounded-sm flex justify-between items-center text-xs gap-4 hover:bg-zinc-50/50">
                     <div className="min-w-0">
-                      <span className="text-[10px] uppercase font-mono text-zinc-605 bg-zinc-100 px-1.5 py-0.5 rounded font-bold">{item.type}</span>
+                      <span className="text-[10px] uppercase font-mono text-zinc-650 bg-zinc-100 px-1.5 py-0.5 rounded font-bold">{item.type}</span>
                       <h4 className="font-bold text-sm text-zinc-850 mt-1 truncate">{item.title}</h4>
                       <p className="text-[10px] text-zinc-400 font-mono mt-0.5">{item.date}</p>
                     </div>
@@ -809,6 +1354,214 @@ export default function AdminDashboard({
                     </div>
                   </div>
                 ))}
+
+                {activeModel === 'transfer' && (
+                  <div className="bg-zinc-50 dark:bg-zinc-900/60 p-5 rounded border border-zinc-200 dark:border-zinc-800 space-y-5">
+                    
+                    {/* Header explanatory card */}
+                    <div className="bg-rose-50/50 dark:bg-rose-955/20 border border-rose-150 p-4 rounded text-xs leading-relaxed text-zinc-750 dark:text-zinc-305 space-y-1">
+                      <span className="font-bold text-rose-600 flex items-center gap-1.5 text-sm">
+                        <RefreshCw className="w-4 h-4 shrink-0" />
+                        <span>পোস্ট ট্রান্সফার হাব (Post Transfer & Transmute Console)</span>
+                      </span>
+                      <p>
+                        যেকোনো ব্লগ পোস্ট বা সংবাদপত্র সংবাদকে সহজেই এক ক্লিক সংস্করণে রূপান্তর করুন। সিস্টেম সব মেটাডাটা, বিবরণ, ইমেজ এবং রিয়েল আইডি ঠিক রেখে ডাটাবেজের অন্য তালিকায় কন্টেন্টটি পুনঃবিন্যাস করবে।
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Direction selector */}
+                      <div>
+                        <label className="block text-xs font-bold text-zinc-700 dark:text-zinc-350 mb-1.5">১. স্থানান্তরের অভিমুখ নির্বাচন (Select Target Direction):</label>
+                        <div className="grid grid-cols-2 gap-2 text-[11px] font-bold">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTransferDirection('news_to_blog');
+                              setTransferSourceId('');
+                              setTransferTargetCategory('সাংগঠনিক কলাম');
+                            }}
+                            className={`py-2 px-2.5 rounded border text-center transition cursor-pointer flex items-center justify-center gap-2 ${
+                              transferDirection === 'news_to_blog'
+                                ? 'bg-rose-600 border-rose-600 text-white font-extrabold shadow-sm'
+                                : 'bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-805 text-zinc-700 dark:text-zinc-400 hover:bg-zinc-100'
+                            }`}
+                          >
+                            <Newspaper className="w-3.5 h-3.5" />
+                            <span>সংবাদ</span>
+                            <ArrowRight className="w-3 h-3 opacity-70" />
+                            <BookOpen className="w-3.5 h-3.5" />
+                            <span>ব্লগ / নিবন্ধ</span>
+                          </button>
+                          
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTransferDirection('blog_to_news');
+                              setTransferSourceId('');
+                              setTransferTargetCategory('political');
+                            }}
+                            className={`py-2 px-2.5 rounded border text-center transition cursor-pointer flex items-center justify-center gap-2 ${
+                              transferDirection === 'blog_to_news'
+                                ? 'bg-rose-600 border-rose-600 text-white font-extrabold shadow-sm'
+                                : 'bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-805 text-zinc-700 dark:text-zinc-400 hover:bg-zinc-100'
+                            }`}
+                          >
+                            <BookOpen className="w-3.5 h-3.5" />
+                            <span>ব্লগ</span>
+                            <ArrowRight className="w-3 h-3 opacity-70" />
+                            <Newspaper className="w-3.5 h-3.5" />
+                            <span>সংবাদ তালিকা</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Source Search & Category Select */}
+                      <div>
+                        <label className="block text-xs font-bold text-zinc-700 dark:text-zinc-350 mb-1.5">২. কন্টেন্ট অনুসন্ধান ও ফিল্টার (Search Source Post):</label>
+                        <input
+                          type="text"
+                          placeholder="পোস্টের শিরোনাম বা অংশ দিয়ে খুঁজুন..."
+                          value={transferSearchQuery}
+                          onChange={(e) => {
+                            setTransferSearchQuery(e.target.value);
+                            setTransferSourceId('');
+                          }}
+                          className="w-full px-3 py-2 text-xs border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-white rounded focus:ring-1 focus:ring-rose-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-5 border-t border-zinc-205 dark:border-zinc-800 pt-4">
+                      {/* Left: Source posts List */}
+                      <div className="md:col-span-5 space-y-2">
+                        <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-350">৩. সোর্স লিস্টের কন্টেন্ট সমূহ ({transferDirection === 'news_to_blog' ? 'সংবাদপত্র' : 'নিবন্ধ তালিকা'}):</label>
+                        <div className="max-h-60 overflow-y-auto border border-zinc-200 dark:border-zinc-800 rounded bg-white dark:bg-zinc-950 p-1.5 space-y-1 custom-scrollbar">
+                          {(() => {
+                            const items = transferDirection === 'news_to_blog' ? db.news : db.blogs;
+                            const filtered = items.filter(item => 
+                              item.title.toLowerCase().includes(transferSearchQuery.toLowerCase()) ||
+                              (item.author || '').toLowerCase().includes(transferSearchQuery.toLowerCase())
+                            );
+
+                            if (filtered.length === 0) {
+                              return <p className="text-[10px] text-zinc-400 p-4 text-center font-mono">কোনো পোস্ট পাওয়া যায়নি</p>;
+                            }
+
+                            return filtered.map(item => (
+                              <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => {
+                                  setTransferSourceId(item.id);
+                                  // Auto-calculate appropriate initial categories based on direction
+                                  if (transferDirection === 'news_to_blog') {
+                                    setTransferTargetCategory('রাজনৈতিক বিশ্লেষণ');
+                                  } else {
+                                    setTransferTargetCategory('political');
+                                  }
+                                }}
+                                className={`w-full text-left p-2.5 rounded text-[11px] transition-all flex flex-col gap-0.5 border ${
+                                  transferSourceId === item.id
+                                    ? 'bg-rose-50/60 dark:bg-rose-955/20 border-rose-505 text-rose-700 dark:text-rose-350 font-bold'
+                                    : 'bg-transparent border-transparent text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100/50'
+                                }`}
+                              >
+                                <span className="line-clamp-2 leading-snug">{item.title}</span>
+                                <span className="text-[9px] text-zinc-400 mt-1 font-mono">ক্যাটেগরি: {item.category} • {item.date}</span>
+                              </button>
+                            ));
+                          })()}
+                        </div>
+                      </div>
+
+                      {/* Right: Selected item details & Transmutation Settings */}
+                      <div className="md:col-span-7 space-y-4 bg-white dark:bg-zinc-950 p-4 rounded border border-zinc-200 dark:border-zinc-800/80">
+                        {(() => {
+                          const items = transferDirection === 'news_to_blog' ? db.news : db.blogs;
+                          const selected = items.find(n => n.id === transferSourceId);
+
+                          if (!selected) {
+                            return (
+                              <div className="h-full flex flex-col items-center justify-center text-center p-6 py-12 text-zinc-400 font-mono text-[11px] space-y-2.5">
+                                <Zap className="w-6 h-6 text-amber-500 animate-pulse" />
+                                <p>দয়া করে বামপাশের তালিকা থেকে একটি কন্টেন্ট সিলেক্ট করুন, লাইভ ট্রান্সফিউশন প্যারামিটার দেখতে পাবেন।</p>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="space-y-4 text-xs">
+                              {/* Selected Header */}
+                              <div className="border-b border-zinc-150 dark:border-zinc-800/80 pb-2.5">
+                                <span className="text-[10px] bg-amber-100 dark:bg-amber-950/30 text-amber-800 px-1.5 py-0.5 rounded font-mono font-bold">সিলেক্টেড কন্টেন্ট</span>
+                                <h4 className="font-bold text-sm text-zinc-850 mt-1">{selected.title}</h4>
+                                <p className="text-[10px] text-zinc-400 font-mono mt-1">
+                                  লেখক: {selected.author} • বর্তমান ভিউ: {((selected.views || 0) * 10)}
+                                </p>
+                              </div>
+
+                              {/* Target custom fields configuration */}
+                              <div className="space-y-3">
+                                <div>
+                                  <label className="block text-[11px] font-bold text-zinc-700 dark:text-zinc-300 mb-1">টার্গেট পোস্ট ক্যাটাগরি (Target Category) *</label>
+                                  {transferDirection === 'news_to_blog' ? (
+                                    <select
+                                      value={transferTargetCategory}
+                                      onChange={(e) => setTransferTargetCategory(e.target.value)}
+                                      className="w-full px-2.5 py-1.5 text-xs border border-zinc-350 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-white rounded focus:outline-none focus:ring-1 focus:ring-rose-500"
+                                    >
+                                      <option value="রাজনৈতিক বিশ্লেষণ">রাজনৈতিক বিশ্লেষণ</option>
+                                      <option value="ছাত্র আন্দোলন ও ক্যাম্পাস">ছাত্র আন্দোলন ও ক্যাম্পাস</option>
+                                      <option value="বিবৃতি কলাম">বিবৃতি কলাম</option>
+                                      <option value="প্রেস রিলিজ নিবন্ধ">প্রেস রিলিজ নিবন্ধ</option>
+                                      <option value="সাংগঠনিক কলাম">সাংগঠনিক কলাম</option>
+                                      <option value="বই সমালোচনা">বই সমালোচনা</option>
+                                    </select>
+                                  ) : (
+                                    <select
+                                      value={transferTargetCategory}
+                                      onChange={(e) => setTransferTargetCategory(e.target.value)}
+                                      className="w-full px-2.5 py-1.5 text-xs border border-zinc-350 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-white rounded focus:outline-none focus:ring-1 focus:ring-rose-500"
+                                    >
+                                      <option value="political">রাজনৈতিক কলাম ও নীতিপত্র</option>
+                                      <option value="organizational">সাংগঠনিক ও প্রাতিষ্ঠানিক সংবাদ</option>
+                                      <option value="campus">ছাত্র আন্দোলন ও মাঠ কভারেজ</option>
+                                      <option value="statement">দাপ্তরিক বিবৃতি ও ঘোষণা</option>
+                                      <option value="press-release">প্রেস রিলিজ</option>
+                                    </select>
+                                  )}
+                                </div>
+
+                                <div className="p-3 bg-rose-50/40 dark:bg-rose-955/10 border border-rose-150 dark:border-rose-900 rounded text-[10px] text-zinc-650 dark:text-zinc-400 leading-normal space-y-1">
+                                  <span className="font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1.5 mb-1 text-xs">
+                                    <Lightbulb className="w-3.5 h-3.5 text-amber-500" />
+                                    <span>ট্রান্সফার রুলস ও কনভার্সন নোটিশঃ</span>
+                                  </span>
+                                  <p className="pl-5">• রূপান্তর হওয়ার পর কন্টেন্টটির পূর্বের মতামত এবং মন্তব্য অক্ষুণ্ণ থাকবে না।</p>
+                                  <p className="pl-5">• নিউজ থেকে ব্লগে রূপান্তরের সময় রিডিং স্পিড স্বয়ংক্রিয়ভাবে ওয়ার্ড গণনার মাধ্যমে হিসেব হবে।</p>
+                                  <p className="pl-5">• ব্লগের ফিচার ভিউ সংখ্যা সঠিকভাবে সংবাদপত্র কাউন্টারে গুণক হিসেবে সংযোজিত হবে।</p>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={handleExecuteTransfer}
+                                  disabled={movingId === selected.id}
+                                  className="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white font-extrabold rounded text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm disabled:opacity-50"
+                                >
+                                  <RefreshCw className={`w-3.5 h-3.5 ${movingId === selected.id ? 'animate-spin' : ''}`} />
+                                  <span>{movingId === selected.id ? 'ট্রান্সফার হচ্ছে...' : 'ট্রান্সমিউট এবং নিরাপদ স্থানান্তর করুন'}</span>
+                                </button>
+                              </div>
+
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
               </div>
             </div>
           )}
@@ -1210,7 +1963,7 @@ export default function AdminDashboard({
                       {/* District Committee Section */}
                       {leadersSubTab === 'district' && (
                         <div className="space-y-4 font-sans">
-                          <div className="space-y-2 max-h-52 overflow-y-auto border border-zinc-200 dark:border-zinc-800 p-2.5 rounded bg-white dark:bg-zinc-950">
+                          <div className="space-y-2 max-h-52 overflow-y-auto border border-zinc-200 dark:border-zinc-800 p-2.5 rounded bg-white dark:bg-zinc-955">
                             {(db.settings.leadersDistrict || []).map((leader: any, idx: number) => (
                               <div key={idx} className="flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/60 p-2 rounded border border-zinc-100 dark:border-zinc-855">
                                 <div className="text-xs">
@@ -1235,9 +1988,56 @@ export default function AdminDashboard({
                             ))}
                           </div>
 
-                          <div className="p-3.5 border border-zinc-200 dark:border-zinc-800 rounded bg-white dark:bg-zinc-955 space-y-3">
+                          <div className="p-3.5 border border-zinc-200 dark:border-zinc-805 rounded bg-white dark:bg-zinc-955 space-y-3">
                             <h5 className="text-xs font-bold text-rose-700 dark:text-rose-455">নতুন জেলা সংসদ নেতা যুক্ত করুন</h5>
-                            <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5">
+                            
+                            {/* Autocomplete Member Search Linker */}
+                            <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-2.5 rounded text-xs space-y-1.5 font-sans">
+                              <label className="block text-[10px] text-zinc-500 uppercase tracking-wider font-extrabold">সংগঠনের সদস্য তালিকায় খুঁজুন ও লিঙ্ক করুন (আইডি বা নাম)</label>
+                              <div className="relative">
+                                <input
+                                  type="text"
+                                  placeholder="অনুমোদিত সদস্যের নাম বা আইডি কোড লিখে খুঁজুন..."
+                                  className="w-full text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 bg-white dark:bg-zinc-955 text-zinc-955 dark:text-white"
+                                  value={leaderSearchText}
+                                  onChange={(e) => setLeaderSearchText(e.target.value)}
+                                />
+                                {leaderSearchText && (
+                                  <div className="absolute z-20 top-full inset-x-0 mt-1 max-h-40 overflow-y-auto bg-white dark:bg-zinc-955 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg text-xs">
+                                    {db.memberships
+                                      .filter(m => m.status === 'verified' && (
+                                        m.name.toLowerCase().includes(leaderSearchText.toLowerCase()) || 
+                                        m.id.toLowerCase().includes(leaderSearchText.toLowerCase())
+                                      ))
+                                      .map(m => {
+                                        const cleanId = `SSF-MYM-${m.id.substring(m.id.length - 5).toUpperCase()}`;
+                                        return (
+                                          <button
+                                            type="button"
+                                            key={m.id}
+                                            onClick={() => {
+                                              setDName(m.name);
+                                              setDMemberCode(cleanId);
+                                              setDPhotoUrl(m.photoUrl || '');
+                                              setDInst(m.institution || '');
+                                              setLeaderSearchText('');
+                                            }}
+                                            className="w-full px-3 py-2 text-left hover:bg-rose-50 dark:hover:bg-rose-955/20 border-b border-zinc-100 dark:border-zinc-900 last:border-b-0 cursor-pointer block"
+                                          >
+                                            <div className="font-bold text-zinc-850 dark:text-zinc-200">{m.name}</div>
+                                            <div className="text-[10px] text-zinc-400 font-mono mt-0.5">{cleanId} • {m.institution}</div>
+                                          </button>
+                                        );
+                                      })}
+                                    {db.memberships.filter(m => m.status === 'verified' && (m.name.toLowerCase().includes(leaderSearchText.toLowerCase()) || m.id.toLowerCase().includes(leaderSearchText.toLowerCase()))).length === 0 && (
+                                      <div className="p-3 text-zinc-400 dark:text-zinc-500 italic text-center">কোড বা নামে কোনো অনুমোদিত সদস্য মিলল না।</div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
                               <input
                                 type="text"
                                 className="text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-955 dark:text-white"
@@ -1266,24 +2066,25 @@ export default function AdminDashboard({
                                 value={dMemberCode}
                                 onChange={(e) => setDMemberCode(e.target.value)}
                               />
-                              <input
-                                type="text"
-                                className="text-xs border border-zinc-150 dark:border-zinc-800 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-955 dark:text-white"
-                                placeholder="ছবির ইউআরএল (ঐচ্ছিক)"
-                                value={dPhotoUrl}
-                                onChange={(e) => setDPhotoUrl(e.target.value)}
-                              />
                             </div>
+
+                            <FileUploader
+                              label="সদস্যের ছবি আপলোড করুন বা সরাসরি লিঙ্ক দিন (ঐচ্ছিক):"
+                              value={dPhotoUrl}
+                              onChange={(url) => setDPhotoUrl(url)}
+                              placeholder="ছবির সরাসরি লিঙ্ক (URL) অথবা ফাইল"
+                            />
+
                             <button
                               type="button"
                               onClick={() => {
-                                if (!dName || !dRole || !dInst) return;
+                                if (!dName || !dRole) return;
                                 const updated = [...(db.settings.leadersDistrict || []), {
                                   name: dName,
                                   role: dRole,
-                                  inst: dInst,
-                                  memberCode: dMemberCode ? dMemberCode.trim() : undefined,
-                                  photoUrl: dPhotoUrl ? dPhotoUrl.trim() : undefined
+                                  inst: dInst || null,
+                                  memberCode: dMemberCode || null,
+                                  photoUrl: dPhotoUrl || null
                                 }];
                                 handleSaveDistrict(updated);
                                 setDName('');
@@ -1304,7 +2105,7 @@ export default function AdminDashboard({
                       {/* Executive Committee Section */}
                       {leadersSubTab === 'executive' && (
                         <div className="space-y-4 font-sans">
-                          <div className="space-y-2 max-h-52 overflow-y-auto border border-zinc-200 dark:border-zinc-800 p-2.5 rounded bg-white dark:bg-zinc-950">
+                          <div className="space-y-2 max-h-52 overflow-y-auto border border-zinc-200 dark:border-zinc-800 p-2.5 rounded bg-white dark:bg-zinc-955">
                             {(db.settings.leadersExecutive || []).map((leader: any, idx: number) => (
                               <div key={idx} className="flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/60 p-2 rounded border border-zinc-100 dark:border-zinc-850">
                                 <div className="text-xs">
@@ -1329,9 +2130,56 @@ export default function AdminDashboard({
                             ))}
                           </div>
 
-                          <div className="p-3.5 border border-zinc-200 dark:border-zinc-808 rounded bg-white dark:bg-zinc-950 space-y-3">
+                          <div className="p-3.5 border border-zinc-200 dark:border-zinc-808 rounded bg-white dark:bg-zinc-955 space-y-3 font-sans">
                             <h5 className="text-xs font-bold text-rose-700 dark:text-rose-455">নতুন কার্যকরী সদস্য যুক্ত করুন</h5>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+
+                            {/* Autocomplete Member Search Linker */}
+                            <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-2.5 rounded text-xs space-y-1.5 font-sans">
+                              <label className="block text-[10px] text-zinc-500 uppercase tracking-wider font-extrabold">সংগঠনের সদস্য তালিকায় খুঁজুন ও লিঙ্ক করুন (আইডি বা নাম)</label>
+                              <div className="relative">
+                                <input
+                                  type="text"
+                                  placeholder="অনুমোদিত সদস্যের নাম বা আইডি কোড লিখে খুঁজুন..."
+                                  className="w-full text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 bg-white dark:bg-zinc-950 text-zinc-955 dark:text-white"
+                                  value={executiveLeaderSearchText}
+                                  onChange={(e) => setExecutiveLeaderSearchText(e.target.value)}
+                                />
+                                {executiveLeaderSearchText && (
+                                  <div className="absolute z-20 top-full inset-x-0 mt-1 max-h-40 overflow-y-auto bg-white dark:bg-zinc-955 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg text-xs">
+                                    {db.memberships
+                                      .filter(m => m.status === 'verified' && (
+                                        m.name.toLowerCase().includes(executiveLeaderSearchText.toLowerCase()) || 
+                                        m.id.toLowerCase().includes(executiveLeaderSearchText.toLowerCase())
+                                      ))
+                                      .map(m => {
+                                        const cleanId = `SSF-MYM-${m.id.substring(m.id.length - 5).toUpperCase()}`;
+                                        return (
+                                          <button
+                                            type="button"
+                                            key={m.id}
+                                            onClick={() => {
+                                              setEName(m.name);
+                                              setEMemberCode(cleanId);
+                                              setEPhotoUrl(m.photoUrl || '');
+                                              setEInst(m.institution || '');
+                                              setExecutiveLeaderSearchText('');
+                                            }}
+                                            className="w-full px-3 py-2 text-left hover:bg-rose-50 dark:hover:bg-rose-955/20 border-b border-zinc-100 dark:border-zinc-900 last:border-b-0 cursor-pointer block"
+                                          >
+                                            <div className="font-bold text-zinc-850 dark:text-zinc-200">{m.name}</div>
+                                            <div className="text-[10px] text-zinc-400 font-mono mt-0.5">{cleanId} • {m.institution}</div>
+                                          </button>
+                                        );
+                                      })}
+                                    {db.memberships.filter(m => m.status === 'verified' && (m.name.toLowerCase().includes(executiveLeaderSearchText.toLowerCase()) || m.id.toLowerCase().includes(executiveLeaderSearchText.toLowerCase()))).length === 0 && (
+                                      <div className="p-3 text-zinc-400 dark:text-zinc-500 italic text-center">কোড বা নামে কোনো অনুমোদিত সদস্য মিলল না।</div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 font-sans">
                               <input
                                 type="text"
                                 className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-955 dark:text-white"
@@ -1354,7 +2202,7 @@ export default function AdminDashboard({
                                 onChange={(e) => setEInst(e.target.value)}
                               />
                             </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            <div className="grid grid-cols-1 sm:grid-cols-1 gap-2.5">
                               <input
                                 type="text"
                                 className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-955 dark:text-white font-mono"
@@ -1362,32 +2210,34 @@ export default function AdminDashboard({
                                 value={eMemberCode}
                                 onChange={(e) => setEMemberCode(e.target.value)}
                               />
-                              <input
-                                type="text"
-                                className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-955 dark:text-white"
-                                placeholder="ছবির ইউআরএল (ঐচ্ছিক)"
-                                value={ePhotoUrl}
-                                onChange={(e) => setEPhotoUrl(e.target.value)}
-                              />
                             </div>
+
+                            <FileUploader
+                              label="সদস্যের ছবি আপলোড করুন বা সরাসরি লিঙ্ক দিন (ঐচ্ছিক):"
+                              value={ePhotoUrl}
+                              onChange={(url) => setEPhotoUrl(url)}
+                              placeholder="ছবির সরাসরি লিঙ্ক (URL) অথবা ফাইল"
+                            />
+
                             <button
                               type="button"
                               onClick={() => {
-                                if (!eName || !eInst) return;
-                                const updated = [...(db.settings.leadersExecutive || []), { 
-                                  name: eName, 
-                                  role: eRole || 'কার্যকরী সদস্য', 
-                                  inst: eInst,
-                                  memberCode: eMemberCode ? eMemberCode.trim() : undefined,
-                                  photoUrl: ePhotoUrl ? ePhotoUrl.trim() : undefined
+                                if (!eName || !eRole) return;
+                                const updated = [...(db.settings.leadersExecutive || []), {
+                                  name: eName,
+                                  role: eRole,
+                                  inst: eInst || null,
+                                  memberCode: eMemberCode || null,
+                                  photoUrl: ePhotoUrl || null
                                 }];
                                 handleSaveExecutive(updated);
                                 setEName('');
+                                setERole('কার্যকরী সদস্য');
                                 setEInst('');
                                 setEMemberCode('');
                                 setEPhotoUrl('');
                               }}
-                              disabled={isSavingLeaders || !eName || !eInst}
+                              disabled={isSavingLeaders || !eName || !eRole}
                               className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-bold cursor-pointer"
                             >
                               যুক্ত করুন
@@ -1396,108 +2246,213 @@ export default function AdminDashboard({
                         </div>
                       )}
 
-                      {/* Unit Committee section */}
+                      {/* Units (Campuses / Schools) Section */}
                       {leadersSubTab === 'units' && (
                         <div className="space-y-4 font-sans">
-                          <div className="space-y-3 max-h-60 overflow-y-auto border border-zinc-200 dark:border-zinc-808 p-2.5 rounded bg-white dark:bg-zinc-950">
-                            {(db.settings.leadersUnits || []).map((unit, idx) => (
-                              <div key={idx} className="bg-zinc-50 dark:bg-zinc-900/40 p-3 rounded border border-zinc-150 dark:border-zinc-808 space-y-2">
-                                <div className="flex justify-between items-center border-b border-zinc-250 dark:border-zinc-800 pb-1.5">
-                                  <h6 className="text-xs font-bold text-rose-700 dark:text-rose-455">{unit.unitName}</h6>
+                          {/* Unit lists */}
+                          <div className="space-y-3 max-h-52 overflow-y-auto border border-zinc-200 dark:border-zinc-800 p-2.5 rounded bg-white dark:bg-zinc-955">
+                            {(db.settings.leadersUnits || []).map((unit: any, idx: number) => (
+                              <div key={idx} className="bg-zinc-50 dark:bg-zinc-900/60 p-3 rounded border border-zinc-150 dark:border-zinc-850 space-y-2">
+                                <div className="flex justify-between items-center border-b border-zinc-200 dark:border-zinc-800 pb-1.5">
+                                  <span className="font-extrabold text-xs text-rose-700 dark:text-rose-455">{unit.unitName}</span>
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      const updated = (db.settings.leadersUnits || []).filter((_, i) => i !== idx);
+                                      const updated = (db.settings.leadersUnits || []).filter((_: any, i: number) => i !== idx);
                                       handleSaveUnits(updated);
                                     }}
                                     disabled={isSavingLeaders}
-                                    className="text-rose-600 hover:text-rose-800 p-1 cursor-pointer"
-                                    title="পুরো সংসদ মুছুন"
+                                    className="text-rose-650 hover:text-rose-850 p-1 cursor-pointer"
+                                    title="শাখা সংসদ মুছুন"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
-                                <div className="flex flex-wrap gap-2 text-[11px]">
-                                  {(unit.leaders || []).map((lead, lIdx) => (
-                                    <span key={lIdx} className="bg-white dark:bg-zinc-955 border border-zinc-150 dark:border-zinc-850 px-2.5 py-1 rounded">
-                                      <strong className="text-zinc-800 dark:text-white">{lead.name}:</strong> <span className="text-zinc-500">{lead.role}</span>
-                                      {lead.memberCode && <span className="text-[9px] text-zinc-400 font-mono ml-1">[কোড: {lead.memberCode}]</span>}
-                                    </span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                                  {(unit.leaders || []).map((leader: any, lidx: number) => (
+                                    <div key={lidx} className="flex items-center gap-2 bg-white dark:bg-zinc-950 p-1.5 rounded border border-zinc-100 dark:border-zinc-900">
+                                      {leader.photoUrl && (
+                                        <img src={leader.photoUrl} alt={leader.name} className="w-7 h-7 rounded-full object-cover shrink-0 border border-zinc-200 dark:border-zinc-800 pointer-events-auto cursor-pointer" onClick={() => {
+                                          if (leader.memberCode) {
+                                            setPreviewMemberId(leader.memberCode);
+                                          }
+                                        }} referrerPolicy="no-referrer" />
+                                      )}
+                                      <div>
+                                        <span className="font-bold cursor-pointer text-zinc-850 dark:text-zinc-200 hover:text-rose-600 hover:underline" onClick={() => {
+                                          if (leader.memberCode) {
+                                            setPreviewMemberId(leader.memberCode);
+                                          }
+                                        }}>{leader.name}</span>
+                                        <span className="text-zinc-500 font-medium ml-1">({leader.role})</span>
+                                        {leader.memberCode && (
+                                          <span className="block text-[8px] text-zinc-400 font-mono font-bold leading-none mt-0.5">{leader.memberCode}</span>
+                                        )}
+                                      </div>
+                                    </div>
                                   ))}
                                 </div>
                               </div>
                             ))}
                           </div>
 
-                          <div className="p-3.5 border border-zinc-200 dark:border-zinc-800 rounded bg-white dark:bg-zinc-950 space-y-3">
-                            <h5 className="text-xs font-bold text-rose-700 dark:text-rose-455">নতুন শিক্ষাঙ্গন / শাখা সংসদ কমিটি যুক্ত করুন</h5>
-                            <input
-                              type="text"
-                              className="text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-950 dark:text-white w-full"
-                              placeholder="শাখার নাম (যেমনঃ আনন্দ মোহন কলেজ শাখা সংসদ)"
-                              value={uUnitName}
-                              onChange={(e) => setUUnitName(e.target.value)}
-                            />
+                          <div className="p-3.5 border border-zinc-200 dark:border-zinc-800 rounded bg-white dark:bg-zinc-955 space-y-3.5">
+                            <h5 className="text-xs font-bold text-rose-700 dark:text-rose-455 font-sans">নতুন ক্যাম্পাস/শিক্ষাঙ্গন সংসদ যুক্ত করুন</h5>
                             
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-808 rounded">
-                              <div className="space-y-2">
-                                <h6 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">নেতৃত্ব ১:</h6>
+                            <div className="space-y-1">
+                              <label className="block text-[10px] text-zinc-500 uppercase tracking-wider font-extrabold font-sans">শিক্ষা প্রতিষ্ঠান / স্কুল ফোরাম শাখার নাম</label>
+                              <input
+                                type="text"
+                                className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-955 dark:text-white w-full font-sans"
+                                placeholder="যেমনঃ আনন্দ মোহন কলেজ সংসদ বা ময়মনসিংহ জিলা স্কুল ফোরাম"
+                                value={uUnitName}
+                                onChange={(e) => setUUnitName(e.target.value)}
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-1 font-sans">
+                              {/* Leader 1 */}
+                              <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-2.5 rounded text-xs space-y-2">
+                                <h6 className="text-[10px] font-extrabold text-rose-750 dark:text-rose-400 uppercase tracking-wider">নেতৃত্ব ১:</h6>
+                                
+                                <div className="space-y-1">
+                                  <label className="text-[10px] text-zinc-400 font-bold block">সদস্য তালিকায় খুঁজুন ও লিঙ্ক করুন</label>
+                                  <div className="relative">
+                                    <input
+                                      type="text"
+                                      placeholder="নাম বা আইডি..."
+                                      className="text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2 py-1 w-full bg-white dark:bg-zinc-950 text-zinc-850 dark:text-white"
+                                      value={unitLead1SearchText}
+                                      onChange={(e) => setUnitLead1SearchText(e.target.value)}
+                                    />
+                                    {unitLead1SearchText && (
+                                      <div className="absolute z-20 top-full inset-x-0 mt-1 max-h-32 overflow-y-auto bg-white dark:bg-zinc-955 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg text-[10px]">
+                                        {db.memberships
+                                          .filter(m => m.status === 'verified' && (
+                                            m.name.toLowerCase().includes(unitLead1SearchText.toLowerCase()) || 
+                                            m.id.toLowerCase().includes(unitLead1SearchText.toLowerCase())
+                                          ))
+                                          .map(m => {
+                                            const cleanId = `SSF-MYM-${m.id.substring(m.id.length - 5).toUpperCase()}`;
+                                            return (
+                                              <button
+                                                type="button"
+                                                key={m.id}
+                                                onClick={() => {
+                                                  setULeadName1(m.name);
+                                                  setULead1MemberCode(cleanId);
+                                                  setULead1PhotoUrl(m.photoUrl || '');
+                                                  setUnitLead1SearchText('');
+                                                }}
+                                                className="w-full px-2 py-1 text-left hover:bg-rose-50 dark:hover:bg-rose-955/20 border-b border-zinc-100 dark:border-zinc-900 last:border-b-0 cursor-pointer block"
+                                              >
+                                                <span className="font-bold">{m.name}</span> • <span className="font-mono text-[9px]">{cleanId}</span>
+                                              </button>
+                                            );
+                                          })}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
                                 <input
                                   type="text"
-                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-955 text-zinc-800 dark:text-white"
-                                  placeholder="নাম"
+                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-950 text-zinc-955 dark:text-white"
+                                  placeholder="নেতৃত্ব ১ এর নাম"
                                   value={uLeadName1}
                                   onChange={(e) => setULeadName1(e.target.value)}
                                 />
                                 <input
                                   type="text"
-                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-955 text-zinc-808 dark:text-white"
+                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-955 text-zinc-955 dark:text-white"
                                   placeholder="পদবী (যেমনঃ সভাপতি, আহ্বায়ক)"
                                   value={uLeadRole1}
                                   onChange={(e) => setULeadRole1(e.target.value)}
                                 />
                                 <input
                                   type="text"
-                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-955 text-zinc-808 dark:text-white font-mono"
+                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-950 text-zinc-955 dark:text-white font-mono"
                                   placeholder="মেম্বার কোড (ঐচ্ছিক)"
                                   value={uLead1MemberCode}
                                   onChange={(e) => setULead1MemberCode(e.target.value)}
                                 />
                                 <input
                                   type="text"
-                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-955 text-zinc-808 dark:text-white"
+                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-955 text-zinc-955 dark:text-white"
                                   placeholder="ছবি ইউআরএল (ঐচ্ছিক)"
                                   value={uLead1PhotoUrl}
                                   onChange={(e) => setULead1PhotoUrl(e.target.value)}
                                 />
                               </div>
 
-                              <div className="space-y-2">
-                                <h6 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">নেতৃত্ব ২ (ঐচ্ছিক):</h6>
+                              {/* Leader 2 */}
+                              <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-2.5 rounded text-xs space-y-2">
+                                <h6 className="text-[10px] font-extrabold text-rose-750 dark:text-rose-455 uppercase tracking-wider">নেতৃত্ব ২ (ঐচ্ছিক):</h6>
+                                
+                                <div className="space-y-1">
+                                  <label className="text-[10px] text-zinc-400 font-bold block">সদস্য তালিকায় খুঁজুন ও লিঙ্ক করুন</label>
+                                  <div className="relative">
+                                    <input
+                                      type="text"
+                                      placeholder="নাম বা আইডি..."
+                                      className="text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2 py-1 w-full bg-white dark:bg-zinc-950 text-zinc-850 dark:text-white"
+                                      value={unitLead2SearchText}
+                                      onChange={(e) => setUnitLead2SearchText(e.target.value)}
+                                    />
+                                    {unitLead2SearchText && (
+                                      <div className="absolute z-20 top-full inset-x-0 mt-1 max-h-32 overflow-y-auto bg-white dark:bg-zinc-955 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg text-[10px]">
+                                        {db.memberships
+                                          .filter(m => m.status === 'verified' && (
+                                            m.name.toLowerCase().includes(unitLead2SearchText.toLowerCase()) || 
+                                            m.id.toLowerCase().includes(unitLead2SearchText.toLowerCase())
+                                          ))
+                                          .map(m => {
+                                            const cleanId = `SSF-MYM-${m.id.substring(m.id.length - 5).toUpperCase()}`;
+                                            return (
+                                              <button
+                                                type="button"
+                                                key={m.id}
+                                                onClick={() => {
+                                                  setULeadName2(m.name);
+                                                  setULead2MemberCode(cleanId);
+                                                  setULead2PhotoUrl(m.photoUrl || '');
+                                                  setUnitLead2SearchText('');
+                                                }}
+                                                className="w-full px-2 py-1 text-left hover:bg-rose-50 dark:hover:bg-rose-955/20 border-b border-zinc-100 dark:border-zinc-900 last:border-b-0 cursor-pointer block"
+                                              >
+                                                <span className="font-bold">{m.name}</span> • <span className="font-mono text-[9px]">{cleanId}</span>
+                                              </button>
+                                            );
+                                          })}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
                                 <input
                                   type="text"
-                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-955 text-zinc-800 dark:text-white"
-                                  placeholder="নাম"
+                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-950 text-zinc-955 dark:text-white"
+                                  placeholder="নেতৃত্ব ২ এর নাম"
                                   value={uLeadName2}
                                   onChange={(e) => setULeadName2(e.target.value)}
                                 />
                                 <input
                                   type="text"
-                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-955 text-zinc-808 dark:text-white"
+                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-955 text-zinc-955 dark:text-white"
                                   placeholder="পদবী (যেমনঃ সাধারণ সম্পাদক)"
                                   value={uLeadRole2}
                                   onChange={(e) => setULeadRole2(e.target.value)}
                                 />
                                 <input
                                   type="text"
-                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-955 text-zinc-808 dark:text-white font-mono"
+                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-950 text-zinc-955 dark:text-white font-mono"
                                   placeholder="মেম্বার কোড (ঐচ্ছিক)"
                                   value={uLead2MemberCode}
                                   onChange={(e) => setULead2MemberCode(e.target.value)}
                                 />
                                 <input
                                   type="text"
-                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-955 text-zinc-808 dark:text-white"
+                                  className="text-xs border border-zinc-200 dark:border-zinc-808 rounded px-2 py-1 w-full bg-white dark:bg-zinc-955 text-zinc-955 dark:text-white"
                                   placeholder="ছবি ইউআরএল (ঐচ্ছিক)"
                                   value={uLead2PhotoUrl}
                                   onChange={(e) => setULead2PhotoUrl(e.target.value)}
@@ -1536,7 +2491,7 @@ export default function AdminDashboard({
                                 setULead2PhotoUrl('');
                               }}
                               disabled={isSavingLeaders || !uUnitName || !uLeadName1 || !uLeadRole1}
-                              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-bold cursor-pointer"
+                              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-bold cursor-pointer font-sans"
                             >
                               যুক্ত করুন
                             </button>
@@ -1544,11 +2499,10 @@ export default function AdminDashboard({
                         </div>
                       )}
 
-                      
-{/* Former leadership section */}
+                      {/* Former Student Leaders Section */}
                       {leadersSubTab === 'former' && (
                         <div className="space-y-4 font-sans">
-                          <div className="space-y-2 max-h-52 overflow-y-auto border border-zinc-200 dark:border-zinc-800 p-2.5 rounded bg-white dark:bg-zinc-950">
+                          <div className="space-y-2 max-h-52 overflow-y-auto border border-zinc-200 dark:border-zinc-805 p-2.5 rounded bg-white dark:bg-zinc-950">
                             {(db.settings.leadersFormer || []).map((former: any, idx: number) => (
                               <div key={idx} className="flex justify-between items-start bg-zinc-50 dark:bg-zinc-900/60 p-2.5 rounded border border-zinc-100 dark:border-zinc-850">
                                 <div className="text-xs">
@@ -1573,26 +2527,26 @@ export default function AdminDashboard({
                           </div>
 
                           <div className="p-3.5 border border-zinc-200 dark:border-zinc-800 rounded bg-white dark:bg-zinc-950 space-y-3">
-                            <h5 className="text-xs font-bold text-rose-700 dark:text-rose-450">নতুন সাবেক নেতৃত্ব বিবরণী যুক্ত করুন</h5>
+                            <h5 className="text-xs font-bold text-rose-700 dark:text-rose-455">নতুন সাবেক নেতৃত্ব বিবরণী যুক্ত করুন</h5>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                               <input
                                 type="text"
-                                className="text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-950 dark:text-white"
+                                className="text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-955 dark:text-white"
                                 placeholder="সাবেক নেতার নাম"
                                 value={fName}
                                 onChange={(e) => setFName(e.target.value)}
                               />
                               <input
                                 type="text"
-                                className="text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-950 dark:text-white"
+                                className="text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-955 dark:text-white"
                                 placeholder="নেতৃত্বের মেয়াদ (যেমনঃ ১৯৯৪ - ১৯৯৮)"
                                 value={fDuration}
                                 onChange={(e) => setFDuration(e.target.value)}
                               />
                             </div>
                             <textarea
-                              className="text-xs border border-zinc-200 dark:border-zinc-805 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-950 dark:text-white w-full h-16 resize-none"
-                              placeholder="সংক্ষিপ্ত অবদান ও পরিচয়াবলী (যেমনঃ প্রাক্তন জেলা সভাপতি ও শ্রমিক আন্দোলনের বুদ্ধিজীবী)"
+                              className="text-xs border border-zinc-200 dark:border-zinc-850 rounded px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 text-zinc-955 dark:text-white w-full h-16 resize-none"
+                              placeholder="সংक्षिप्त অবদান ও পরিচয়াবলী (যেমনঃ প্রাক্তন জেলা সভাপতি ও শ্রমিক আন্দোলনের বুদ্ধিজীবী)"
                               value={fContribution}
                               onChange={(e) => setFContribution(e.target.value)}
                             />
@@ -1627,23 +2581,242 @@ export default function AdminDashboard({
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-200 dark:border-zinc-800 pb-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between w-full gap-4">
                   <div>
-                    <h3 className="text-sm font-bold text-zinc-850 dark:text-zinc-200">অনলাইন সদস্যভুক্তি ও সেল অনুমোদন</h3>
+                    <h3 className="text-sm font-bold text-zinc-850 dark:text-zinc-200 font-sans">অনলাইন সদস্যভুক্তি ও সেল অনুমোদন</h3>
                     <p className="text-[11px] text-zinc-500 font-sans mt-1">
-                      শ্রেণী ও সেশন ডিক্লেয়ারেশন অনুযায়ী আবেদনকারীদের যাচাই করে তালিকায় অন্তর্ভুক্ত করুন।
+                      শ্রেণী ও সেশন ডিক্লেয়ারেশন অনুযায়ী আবেদনকারীদের অনুমোদন দিন এবং তাদের রোল ও ব্যাজ নির্ধারণ করুন।
                     </p>
                   </div>
-                  
-                  {/* CSV Download Button */}
                   <button
-                    onClick={handleDownloadMembersCSV}
-                    title="অনুমোদিত ভেরিফাইড সদস্যদের সম্পূর্ণ ডাটাবেজ এক্সেল বা শিট ফরম্যাটে ডাউনলোড করুন"
-                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-md shadow-xs transition duration-150 select-none cursor-pointer border border-emerald-500"
+                    onClick={() => {
+                      setNewMName('');
+                      setNewMMobile('');
+                      setNewMEmail('');
+                      setNewMPassword('123456');
+                      setNewMInst('');
+                      setNewMDept('');
+                      setNewMYear('');
+                      setNewMAddress('');
+                      setNewMDob('');
+                      setNewMBloodGroup('');
+                      setNewMPhotoUrl('');
+                      setShowCreateMemberForm(!showCreateMemberForm);
+                    }}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold cursor-pointer flex items-center gap-1.5 shrink-0 self-start sm:self-center font-sans tracking-wide"
                   >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>ভেরিফাইড মেম্বার ডাউনলোড (CSV)</span>
+                    <PlusCircle className="w-4 h-4" />
+                    সরাসরি নতুন সদস্য যুক্ত করুন
                   </button>
                 </div>
               </div>
+
+              {/* Directly Create Member Form container */}
+              {showCreateMemberForm && (
+                <form onSubmit={handleCreateMemberSubmit} className="p-4 border border-emerald-250 dark:border-emerald-900/50 rounded bg-zinc-50 dark:bg-zinc-955 space-y-4 font-sans">
+                  <div className="border-b border-zinc-200 dark:border-zinc-800 pb-2">
+                    <h4 className="text-xs font-extrabold text-emerald-700 dark:text-emerald-400 uppercase tracking-widest font-sans flex items-center gap-1.5">
+                      <UserPlus className="w-4 h-4" />
+                      মেম্বারশিপ সেল সংযুক্তি (নতুন ডাটা এন্ট্রি)
+                    </h4>
+                  </div>
+
+                  {createMemberError && (
+                    <div className="p-2.5 bg-rose-50 dark:bg-rose-955/20 border border-rose-200 dark:border-rose-900/30 text-rose-600 dark:text-rose-400 rounded text-xs">
+                      {createMemberError}
+                    </div>
+                  )}
+
+                  {createMemberSuccess && (
+                    <div className="p-2.5 bg-emerald-50 dark:bg-emerald-955/20 border border-emerald-200 dark:border-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded text-xs">
+                      {createMemberSuccess}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-350 uppercase mb-1">সদস্যের নাম</label>
+                      <input
+                        type="text"
+                        placeholder="যেমন: মোঃ সাব্বির হাসান"
+                        className="w-full px-3 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs text-zinc-900 dark:text-white"
+                        value={newMName}
+                        onChange={(e) => setNewMName(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-350 uppercase mb-1">মোবাইল নম্বর</label>
+                      <input
+                        type="text"
+                        placeholder="যেমন: 017xxxxxxxx"
+                        className="w-full px-3 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs text-zinc-900 dark:text-white"
+                        value={newMMobile}
+                        onChange={(e) => setNewMMobile(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-350 uppercase mb-1">ইমেল ঠিকানা (ঐচ্ছিক)</label>
+                      <input
+                        type="email"
+                        placeholder="যেমন: user@example.com"
+                        className="w-full px-3 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs text-zinc-900 dark:text-white"
+                        value={newMEmail}
+                        onChange={(e) => setNewMEmail(e.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-350 uppercase mb-1">অস্থায়ী পাসওয়ার্ড</label>
+                      <input
+                        type="text"
+                        placeholder="ডিফল্ট: 123456"
+                        className="w-full px-3 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs text-zinc-900 dark:text-white"
+                        value={newMPassword}
+                        onChange={(e) => setNewMPassword(e.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-350 uppercase mb-1">ভর্তি শিক্ষাঙ্গন/প্রতিষ্ঠান</label>
+                      <input
+                        type="text"
+                        placeholder="যেমন: আনন্দ মোহন কলেজ"
+                        className="w-full px-3 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs text-zinc-900 dark:text-white"
+                        value={newMInst}
+                        onChange={(e) => setNewMInst(e.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-655 dark:text-zinc-355 uppercase mb-1">শ্রেণি বা বিভাগ</label>
+                      <input
+                        type="text"
+                        placeholder="যেমন: বিএসসি (অনার্স)"
+                        className="w-full px-3 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs text-zinc-900 dark:text-white"
+                        value={newMDept}
+                        onChange={(e) => setNewMDept(e.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-350 uppercase mb-1">শিক্ষাবর্ষ বা সেশন</label>
+                      <input
+                        type="text"
+                        placeholder="যেমন: ২০২০-২১"
+                        className="w-full px-3 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs text-zinc-900 dark:text-white"
+                        value={newMYear}
+                        onChange={(e) => setNewMYear(e.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-655 dark:text-zinc-355 uppercase mb-1">বর্তমান ঠিকানা</label>
+                      <input
+                        type="text"
+                        placeholder="যেমন: ময়মনসিংহ সদর"
+                        className="w-full px-3 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs text-zinc-900 dark:text-white"
+                        value={newMAddress}
+                        onChange={(e) => setNewMAddress(e.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-350 uppercase mb-1">জন্ম তারিখ (DOB)</label>
+                      <input
+                        type="text"
+                        placeholder="যেমন: ১৫ আগস্ট ১৯৯৯"
+                        className="w-full px-3 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs text-zinc-900 dark:text-white"
+                        value={newMDob}
+                        onChange={(e) => setNewMDob(e.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-350 uppercase mb-1">রক্তের গ্রুপ</label>
+                      <select
+                        className="w-full px-3 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs font-sans text-zinc-900 dark:text-white"
+                        value={newMBloodGroup}
+                        onChange={(e) => setNewMBloodGroup(e.target.value)}
+                      >
+                        <option value="">নির্বাচন করুন</option>
+                        <option value="A+">A+</option>
+                        <option value="A-">A-</option>
+                        <option value="B+">B+</option>
+                        <option value="B-">B-</option>
+                        <option value="AB+">AB+</option>
+                        <option value="AB-">AB-</option>
+                        <option value="O+">O+</option>
+                        <option value="O-">O-</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-350 uppercase mb-1">সদস্যের ক্যাটাগরি</label>
+                      <select
+                        className="w-full px-3 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs font-sans text-zinc-900 dark:text-white"
+                        value={newMType}
+                        onChange={(e) => setNewMType(e.target.value as any)}
+                      >
+                        <option value="member">সদস্য (Member)</option>
+                        <option value="volunteer">স্বেচ্ছাসেবক / শুভাকাঙ্ক্ষী (Volunteer)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-350 uppercase mb-1">অর্গানাইজেশনাল রোল</label>
+                      <select
+                        className="w-full px-3 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs font-sans text-zinc-900 dark:text-white"
+                        value={newMRoleTag}
+                        onChange={(e) => setNewMRoleTag(e.target.value as any)}
+                      >
+                        <option value="member">কর্মী বা সাধারণ মেম্বার</option>
+                        <option value="coordinator_admin">সহকারী এডমিন (সমন্বয়ক)</option>
+                        <option value="super_admin">সুপার এডমিন</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-350 uppercase mb-1">ব্যাজ টাইটেল (যেমন: সাধারণ সদস্য)</label>
+                      <input
+                        type="text"
+                        placeholder="যেমন: কর্মী সদস্য"
+                        className="w-full px-3 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs text-zinc-900 dark:text-white"
+                        value={newMBadgeText}
+                        onChange={(e) => setNewMBadgeText(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-350 uppercase mb-1">প্রোফাইল ছবি ইউআরএল</label>
+                      <input
+                        type="text"
+                        placeholder="https://..."
+                        className="w-full px-3 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs text-zinc-900 dark:text-white"
+                        value={newMPhotoUrl}
+                        onChange={(e) => setNewMPhotoUrl(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 justify-end pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateMemberForm(false)}
+                      className="px-4 py-1.5 bg-zinc-200 dark:bg-zinc-805 dark:hover:bg-zinc-750 text-zinc-700 dark:text-zinc-300 font-bold text-xs rounded transition cursor-pointer"
+                    >
+                      বাতিল
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold cursor-pointer"
+                    >
+                      যুক্ত করুন
+                    </button>
+                  </div>
+                </form>
+              )}
 
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div></div>
@@ -1709,7 +2882,32 @@ export default function AdminDashboard({
                         {member.status === 'verified' ? 'Approved' : member.status === 'rejected' ? 'Rejected' : 'Pending'}
                       </span>
 
-                      <h4 className="font-bold text-sm text-zinc-900 dark:text-white">{member.name} ({member.type === 'member' ? 'সদস্য' : 'স্বেচ্ছাসেবক'})</h4>
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <h4 className="font-bold text-sm text-zinc-900 dark:text-white">{member.name} ({member.type === 'member' ? 'সদস্য' : 'স্বেচ্ছাসেবক'})</h4>
+                        {member.badgeText && (
+                          <span className="px-2 py-0.5 rounded bg-emerald-150 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 font-sans text-[10px] font-bold border border-emerald-200 dark:border-emerald-900/40">
+                            {member.badgeText}
+                          </span>
+                        )}
+                      </div>
+                      
+                      {/* Live Member ID Code Display */}
+                      <div className="mt-1 flex flex-wrap gap-2 items-center">
+                        <span className="text-[11px] font-bold font-mono text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded border border-rose-100 dark:border-rose-900/40 select-all">
+                          ID: SSF-MYM-{member.id.substring(member.id.length - 5).toUpperCase()}
+                        </span>
+                        {member.resetApproved && (
+                          <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded border border-emerald-100 dark:border-emerald-950/50">
+                            পাসওয়ার্ড রিসেট অনুমোদিত
+                          </span>
+                        )}
+                        {member.resetRequested && (
+                          <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 rounded border border-amber-100 dark:border-amber-950/50 animate-pulse">
+                            রিসেট আবেদন অপেক্ষমান
+                          </span>
+                        )}
+                      </div>
+
                       <ul className="text-xs text-zinc-650 dark:text-zinc-400 space-y-1 font-mono mt-2.5">
                         <li><span className="font-sans font-semibold">মোবাইল:</span> {member.mobile}</li>
                         <li><span className="font-sans font-semibold">ইমেইল:</span> {member.email || 'নাই'}</li>
@@ -2459,6 +3657,166 @@ export default function AdminDashboard({
         </div>
       </div>
 
+      {/* Member Details Preview Card Modal */}
+      {previewMemberId && (() => {
+        const previewMember = db.memberships.find(m => {
+          const cleanId = `SSF-MYM-${m.id.substring(m.id.length - 5).toUpperCase()}`;
+          return cleanId === previewMemberId || m.id === previewMemberId;
+        });
+
+        if (!previewMember) {
+          return (
+            <div className="fixed inset-0 z-55 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+              <div className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 text-center max-w-sm w-full shadow-2xl space-y-4">
+                <p className="text-sm font-bold text-zinc-650 dark:text-zinc-350">কোনো সদস্য ডাটা পাওয়া যায়নি!</p>
+                <button
+                  type="button"
+                  onClick={() => setPreviewMemberId(null)}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-750 text-white rounded text-xs font-bold font-sans cursor-pointer transition"
+                >
+                  বন্ধ করুন
+                </button>
+              </div>
+            </div>
+          );
+        }
+
+        const cleanId = `SSF-MYM-${previewMember.id.substring(previewMember.id.length - 5).toUpperCase()}`;
+
+        return (
+          <div className="fixed inset-0 z-55 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 font-sans select-text">
+            <div className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-805 rounded-xl max-w-sm w-full overflow-hidden shadow-2xl relative flex flex-col">
+              {/* Header */}
+              <div className="bg-rose-700 p-4 text-white flex justify-between items-center">
+                <h4 className="font-bold text-sm tracking-wide">সদস্য প্রোফাইল বিবরণী</h4>
+                <button
+                  type="button"
+                  onClick={() => setPreviewMemberId(null)}
+                  className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white cursor-pointer transition text-xs font-bold leading-none"
+                  title="বন্ধ করুন"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-5 space-y-5 overflow-y-auto max-h-[75vh]">
+                {/* Image and basic info */}
+                <div className="text-center space-y-2">
+                  <div className="relative inline-block">
+                    {previewMember.photoUrl ? (
+                      <img
+                        src={previewMember.photoUrl}
+                        alt={previewMember.name}
+                        className="w-20 h-20 rounded-full mx-auto object-cover border-2 border-rose-500 shadow-md pointer-events-auto"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="w-20 h-20 rounded-full mx-auto bg-zinc-150 dark:bg-zinc-850 border border-zinc-300 dark:border-zinc-800 flex items-center justify-center shadow-inner">
+                        <User className="w-10 h-10 text-zinc-400" />
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <h5 className="font-bold text-base text-zinc-900 dark:text-zinc-100">{previewMember.name}</h5>
+                    <span className="text-[10px] font-mono font-bold bg-rose-50 dark:bg-rose-955/40 border border-rose-100 dark:border-rose-900/40 text-rose-650 dark:text-rose-400 px-2 py-0.5 rounded leading-none inline-block mt-1">
+                      ID: {cleanId}
+                    </span>
+                  </div>
+                  <div className="flex justify-center gap-1.5 flex-wrap">
+                    <span className={`text-[9px] font-bold py-0.5 px-2 rounded-full uppercase ${
+                      previewMember.type === 'member'
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-850 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/30'
+                        : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-850 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/30'
+                    }`}>
+                      {previewMember.type === 'member' ? 'সদস্য' : 'স্বেচ্ছাসেবক'}
+                    </span>
+                    {previewMember.badgeText && (
+                      <span className="text-[9px] font-bold py-0.5 px-2 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-850 dark:text-amber-300 border border-amber-100 dark:border-amber-900/30">
+                        {previewMember.badgeText}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <hr className="border-zinc-100 dark:border-zinc-900" />
+
+                {/* Details List */}
+                <div className="grid grid-cols-1 gap-3.5 text-xs text-zinc-700 dark:text-zinc-300">
+                  <div className="flex items-start gap-2.5">
+                    <Smartphone className="w-4 h-4 text-zinc-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="text-[10px] text-zinc-400 block font-sans">মোবাইল ফোন নম্বর</span>
+                      <span className="font-bold font-mono text-zinc-850 dark:text-zinc-200">{previewMember.mobile}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5">
+                    <Mail className="w-4 h-4 text-zinc-400 shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <span className="text-[10px] text-zinc-400 block font-sans">দুক্তি ইমেইল এড্রেস</span>
+                      <span className="font-bold font-mono text-zinc-850 dark:text-zinc-200 break-all">{previewMember.email || 'নাই'}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5">
+                    <Calendar className="w-4 h-4 text-zinc-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="text-[10px] text-zinc-400 block font-sans">জন্ম তারিখ (DOB)</span>
+                      <span className="font-bold text-zinc-850 dark:text-zinc-200">{previewMember.dob || 'তথ্য নাই'}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5">
+                    <Droplets className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="text-[10px] text-zinc-400 block font-sans">রক্তের গ্রুপ</span>
+                      {previewMember.bloodGroup ? (
+                        <span className="bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded border border-rose-100 dark:border-rose-950/40 text-rose-650 dark:text-rose-400 font-bold leading-none inline-block mt-0.5 text-[10px]">
+                          {previewMember.bloodGroup}
+                        </span>
+                      ) : (
+                        <span className="text-zinc-500 italic">তথ্য নাই</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5">
+                    <BookOpen className="w-4 h-4 text-zinc-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="text-[10px] text-zinc-400 block font-sans">শিক্ষা প্রতিষ্ঠান ও শ্রেণি</span>
+                      <span className="font-bold text-zinc-850 dark:text-zinc-200">
+                        {previewMember.institution} • {previewMember.department}
+                      </span>
+                      <span className="text-[10px] text-zinc-400 block font-mono mt-0.5">সেশন: {previewMember.academicYear}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5">
+                    <MapPin className="w-4 h-4 text-zinc-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="text-[10px] text-zinc-400 block font-sans">ঠিকানা (বাসস্থান)</span>
+                      <span className="font-bold text-zinc-850 dark:text-zinc-200">{previewMember.address}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Close Footer Button */}
+              <div className="p-4 border-t border-zinc-100 dark:border-zinc-900 bg-zinc-50 dark:bg-zinc-900/30 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setPreviewMemberId(null)}
+                  className="px-4 py-2 bg-rose-650 hover:bg-rose-700 text-white rounded text-xs font-bold font-sans cursor-pointer transition block w-full text-center"
+                >
+                  বন্ধ করুন
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Full-featured Create or Update Content Modal Sheet */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
@@ -2555,17 +3913,235 @@ export default function AdminDashboard({
                     )}
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-705 dark:text-zinc-300 mb-1">
-                      লেখক বা তথ্য উপস্থাপক *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={formAuthor}
-                      onChange={(e) => setFormAuthor(e.target.value)}
-                      className="w-full px-3 py-2 text-xs border border-zinc-300 dark:border-zinc-700 bg-transparent text-zinc-900 dark:text-white rounded focus:outline-none"
-                    />
+                  <div className="col-span-1 sm:col-span-2 bg-zinc-50 dark:bg-zinc-900/40 p-4 rounded border border-zinc-200 dark:border-zinc-800 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                      <label className="block text-xs font-bold text-zinc-800 dark:text-zinc-200">
+                        পোস্টের লেখক বা কন্ট্রিবিউটর টাইপ (Attribution Type) *
+                      </label>
+                      <span className="text-[10px] text-zinc-500 font-bold bg-zinc-100 dark:bg-zinc-900 px-2.5 py-1 rounded">
+                        ধরণঃ {authorSelectType === 'designation' ? 'দাপ্তরিক পদবি' : authorSelectType === 'member' ? 'নিবন্ধিত সাধারণ সদস্য' : authorSelectType === 'guest' ? 'গেস্ট লেখক / কাস্টম নাম' : 'কাস্টম আইডি / মেনশন'}
+                      </span>
+                    </div>
+
+                    {/* Attribution Type Dropdown */}
+                    <div>
+                      <select
+                        value={authorSelectType}
+                        onChange={(e) => {
+                          const val = e.target.value as any;
+                          setAuthorSelectType(val);
+                          setManualMemberName('');
+                          setManualMemberId('');
+                          setSelectedMemberId(null);
+                          if (val === 'designation') {
+                            setFormAuthor('দপ্তর সম্পাদক');
+                          } else {
+                            setFormAuthor('');
+                          }
+                        }}
+                        className="w-full px-3 py-2 text-xs font-bold border border-rose-500/30 dark:border-rose-500/20 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-white rounded focus:outline-none focus:ring-2 focus:ring-rose-500"
+                      >
+                        <option value="designation">১. দাপ্তরিক পদবি অনুযায়ী (Organizational Designation)</option>
+                        <option value="member">২. নিবন্ধিত সহযোদ্ধা সাধারণ সদস্য (Database Active Member)</option>
+                        <option value="guest">৩. গেস্ট রাইটার / কাস্টম লেখক (Guest Author / Custom Attribution)</option>
+                        <option value="mention">৪. পদহীন সদস্য আইডি/হ্যান্ডেল ও সরাসরি মেনশন (Custom ID Mention)</option>
+                      </select>
+                    </div>
+
+                    {/* Subform Conditional Fields */}
+                    {authorSelectType === 'designation' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-zinc-100 dark:border-zinc-800/80 pt-3">
+                        <div className="sm:col-span-2">
+                          <label className="block text-[10px] text-zinc-500 mb-0.5">পদবি টাইপ করুনঃ</label>
+                          <input
+                            type="text"
+                            required
+                            value={formAuthor}
+                            onChange={(e) => setFormAuthor(e.target.value)}
+                            className="w-full px-3 py-2 text-xs border border-zinc-300 dark:border-zinc-700 bg-transparent text-zinc-900 dark:text-white rounded focus:outline-none focus:ring-1 focus:ring-rose-500"
+                            placeholder="যেমনঃ সভাপতি, দপ্তর সম্পাদক, সাধারণ সদস্য..."
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-zinc-500 mb-0.5">রোল টেমপ্লেট নির্বাচন করুনঃ</label>
+                          <select
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                setFormAuthor(e.target.value);
+                              }
+                            }}
+                            className="w-full px-2 py-2 text-xs border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-700 dark:text-zinc-300 rounded focus:outline-none"
+                          >
+                            <option value="">রোল নির্বাচন করুন</option>
+                            <option value="জেলা সভাপতি">জেলা সভাপতি</option>
+                            <option value="জেলা সাধারণ সম্পাদক">জেলা সাধারণ সম্পাদক</option>
+                            <option value="জেলা সাংগঠনিক সম্পাদক">জেলা সাংগঠনিক সম্পাদক</option>
+                            <option value="জেলা দপ্তর সম্পাদক">জেলা দপ্তর সম্পাদক</option>
+                            <option value="জেলা প্রচার ও প্রকাশনা বিভাগ">জেলা প্রচার ও প্রকাশনা বিভাগ</option>
+                            <option value="জেলা তথ্য ও আইটি সেল">জেলা তথ্য ও আইটি সেল</option>
+                            <option value="সদস্য, জেলা কমিটি">সদস্য, জেলা কমিটি</option>
+                            <option value="আবাহক, জেলা সংসদ">আবাহক, জেলা সংসদ</option>
+                            <option value="জেলা সমন্বয়ক">জেলা সমন্বয়ক</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {authorSelectType === 'member' && (
+                      <div className="space-y-3 border-t border-zinc-100 dark:border-zinc-800/80 pt-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10px] text-zinc-500 mb-0.5 font-bold">১. ডাটাবেজের নিবন্ধিত সক্রিয় সদস্য তালিকাঃ</label>
+                            <select
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val) {
+                                  const m = (db?.memberships || []).find(mem => mem.id === val);
+                                  if (m) {
+                                    const shortId = `SSF-MYM-${m.id.substring(m.id.length - 5).toUpperCase()}`;
+                                    setSelectedMemberId(val);
+                                    setManualMemberName(m.name);
+                                    setManualMemberId(shortId);
+                                    setFormAuthor(`লেখকঃ ${m.name} (সদস্য আইডি: ${shortId})`);
+                                  }
+                                } else {
+                                  setSelectedMemberId(null);
+                                }
+                              }}
+                              value={selectedMemberId || ''}
+                              className="w-full px-2.5 py-1.5 text-xs border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-white rounded focus:outline-none"
+                            >
+                              <option value="">-- সক্রিয় সদস্য নির্বাচন করুন --</option>
+                              {(db?.memberships || [])
+                                .filter(m => m.status === 'verified')
+                                .map(m => {
+                                  const shortId = `SSF-MYM-${m.id.substring(m.id.length - 5).toUpperCase()}`;
+                                  return (
+                                    <option key={m.id} value={m.id}>
+                                      {m.name} ({shortId} - {m.institution})
+                                    </option>
+                                  );
+                                })
+                              }
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] text-zinc-500 mb-0.5 font-bold">২. অথবা নাম ও আইডি ম্যানুয়ালি লিখুনঃ</label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="সহযোদ্ধার নাম"
+                                value={manualMemberName}
+                                onChange={(e) => {
+                                  setManualMemberName(e.target.value);
+                                  const mId = manualMemberId ? ` (সদস্য আইডি: ${manualMemberId})` : '';
+                                  setFormAuthor(`লেখকঃ ${e.target.value}${mId}`);
+                                }}
+                                className="w-1/2 px-2.5 py-1.5 text-xs border border-zinc-300 dark:border-zinc-700 bg-transparent text-zinc-900 dark:text-white rounded focus:outline-none"
+                              />
+                              <input
+                                type="text"
+                                placeholder="যেমন SSF-MYM-5A3B8"
+                                value={manualMemberId}
+                                onChange={(e) => {
+                                  setManualMemberId(e.target.value);
+                                  const mName = manualMemberName || 'সাধারণ সদস্য';
+                                  const mId = e.target.value ? ` (সদস্য আইডি: ${e.target.value})` : '';
+                                  setFormAuthor(`লেখকঃ ${mName}${mId}`);
+                                }}
+                                className="w-1/2 px-2.5 py-1.5 text-xs border border-zinc-300 dark:border-zinc-700 bg-transparent text-zinc-900 dark:text-white rounded focus:outline-none"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {authorSelectType === 'guest' && (
+                      <div className="space-y-3 border-t border-zinc-100 dark:border-zinc-800/80 pt-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10px] text-zinc-500 mb-0.5 font-bold">গেস্ট রাইটার বা কাস্টম নাম (Guest Writer Name):</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="যেমনঃ ড. আসিফ নজরুল, সাজিদ হাসান..."
+                              value={manualMemberName}
+                              onChange={(e) => {
+                                setManualMemberName(e.target.value);
+                                const customAffil = manualMemberId ? `, ${manualMemberId}` : '';
+                                setFormAuthor(`লেখকঃ ${e.target.value} (গেস্ট রাইটার${customAffil})`);
+                              }}
+                              className="w-full px-2.5 py-2 text-xs border border-zinc-300 dark:border-zinc-700 bg-transparent text-zinc-900 dark:text-white rounded focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] text-zinc-500 mb-0.5 font-bold">পরিচিতি বা এফিলিয়েশন (Affiliation - ঐচ্ছিক):</label>
+                            <input
+                              type="text"
+                              placeholder="যেমনঃ ঢাবি শিক্ষক, কলামিস্ট, ইত্যাদি..."
+                              value={manualMemberId}
+                              onChange={(e) => {
+                                setManualMemberId(e.target.value);
+                                const mName = manualMemberName || 'কাস্টম লেখক';
+                                const customAffil = e.target.value ? `, ${e.target.value}` : '';
+                                setFormAuthor(`লেখকঃ ${mName} (গেস্ট রাইটার${customAffil})`);
+                              }}
+                              className="w-full px-2.5 py-2 text-xs border border-zinc-300 dark:border-zinc-700 bg-transparent text-zinc-900 dark:text-white rounded focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-zinc-400">
+                          * পদহীন কোনো বিশিষ্ট বা অতিথি লেখক দ্বারা লিখিত প্রবন্ধ ও ব্লগের ক্ষেত্রে এটি সহায়ক।
+                        </p>
+                      </div>
+                    )}
+
+                    {authorSelectType === 'mention' && (
+                      <div className="space-y-3 border-t border-zinc-100 dark:border-zinc-800/80 pt-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10px] text-zinc-500 mb-0.5 font-bold">নাম বা কাস্টম হ্যান্ডেল (Name / Handle):</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="যেমনঃ সহযোদ্ধা রাফি আরমান"
+                              value={manualMemberName}
+                              onChange={(e) => {
+                                setManualMemberName(e.target.value);
+                                const mIdStr = manualMemberId ? ` (${manualMemberId})` : ' (পদহীন)';
+                                setFormAuthor(`লেখকঃ ${e.target.value}${mIdStr}`);
+                              }}
+                              className="w-full px-2.5 py-2 text-xs border border-zinc-300 dark:border-zinc-700 bg-transparent text-zinc-900 dark:text-white rounded focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] text-zinc-500 mb-0.5 font-bold">কাস্টম আইডি বা মেনশন লেবেল (ID / Handle / Label):</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="যেমনঃ @rafi_arm, সমর্থক, বা সদস্য আইডি: SSF-MYM-XX"
+                              value={manualMemberId}
+                              onChange={(e) => {
+                                setManualMemberId(e.target.value);
+                                const mName = manualMemberName || 'রাফি আরমান';
+                                const mIdStr = e.target.value ? ` (${e.target.value})` : ' (পদহীন)';
+                                setFormAuthor(`লেখকঃ ${mName}${mIdStr}`);
+                              }}
+                              className="w-full px-2.5 py-2 text-xs border border-zinc-300 dark:border-zinc-700 bg-transparent text-zinc-900 dark:text-white rounded focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Computed Final Preview View */}
+                    <div className="p-3 bg-zinc-100 dark:bg-zinc-950 rounded border border-zinc-200 dark:border-zinc-900 text-xs text-zinc-700 dark:text-zinc-300 flex justify-between items-center">
+                      <span className="truncate">ডাটাবেজে সংরক্ষিত হবেঃ <strong className="text-rose-600 dark:text-rose-400 font-extrabold">{formAuthor || '(ফাঁকা - অনুগ্রহ করে ওপরে তথ্য প্রদান করুন)'}</strong></span>
+                    </div>
                   </div>
                 </div>
 

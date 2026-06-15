@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Award, User, Phone, Mail, MapPin, Calendar, LogOut, CheckCircle2, ShieldCheck, FileText, BookOpen, Clock, Smartphone, Download, Sparkles, Flame, Camera, Link, Check, RefreshCw, Pencil, History, Save, Undo, Eye, X } from 'lucide-react';
-import { MemberRegistration, News, Circular, Book, WebSettings, getMemberBadgeText } from '../types';
+import { Award, User, Phone, Mail, MapPin, Calendar, LogOut, CheckCircle2, ShieldCheck, FileText, BookOpen, Clock, Smartphone, Download, Sparkles, Flame, Camera, Link, Check, RefreshCw, Pencil, History, Save, Undo, Eye, X, Heart, Plus, Send } from 'lucide-react';
+import { MemberRegistration, News, Circular, Book, WebSettings, Blog, getMemberBadgeText } from '../types';
 import { motion } from 'motion/react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -13,9 +13,11 @@ interface MemberPortalProps {
   circulars: Circular[];
   books: Book[];
   settings?: WebSettings;
+  blogs?: Blog[];
+  onAddBlog?: (post: Omit<Blog, 'id' | 'views' | 'comments' | 'date'>) => Promise<boolean>;
 }
 
-export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMember, circulars = [], books = [], settings }: MemberPortalProps) {
+export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMember, circulars = [], books = [], settings, blogs = [], onAddBlog }: MemberPortalProps) {
   const memberId = `SSF-MYM-${member.id.substring(member.id.length - 5).toUpperCase()}`;
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -23,6 +25,68 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
   const [photoUrlInput, setPhotoUrlInput] = useState('');
   const [loadingUrl, setLoadingUrl] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+
+  // Blog submission panel states
+  const [showBlogForm, setShowBlogForm] = useState(false);
+  const [blogTitle, setBlogTitle] = useState('');
+  const [blogExcerpt, setBlogExcerpt] = useState('');
+  const [blogContent, setBlogContent] = useState('');
+  const [blogCategory, setBlogCategory] = useState('মতামত ও প্রবন্ধ');
+  const [blogImage, setBlogImage] = useState('https://images.unsplash.com/photo-1546410531-bb4caa6b424d?auto=format&fit=crop&w=600&q=80');
+  const [blogTags, setBlogTags] = useState('প্রবন্ধ, সদস্য_মত');
+  const [blogSubmitLoading, setBlogSubmitLoading] = useState(false);
+  const [blogSubmitSuccess, setBlogSubmitSuccess] = useState('');
+  const [blogSubmitError, setBlogSubmitError] = useState('');
+
+  const handleBlogSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!blogTitle.trim() || !blogExcerpt.trim() || !blogContent.trim()) {
+      setBlogSubmitError('দয়া করে প্রথম ৩টি ক্ষেত্র (শিরোনাম, পরিচিতি, প্রবন্ধের মূল অংশ) অবশ্যই পূরণ করুন।');
+      return;
+    }
+
+    setBlogSubmitLoading(true);
+    setBlogSubmitError('');
+    setBlogSubmitSuccess('');
+
+    try {
+      const tagsArray = blogTags.split(',').map(t => t.trim()).filter(Boolean);
+      
+      const newBlogPost = {
+        title: blogTitle.trim(),
+        excerpt: blogExcerpt.trim(),
+        content: blogContent.trim(),
+        category: blogCategory,
+        author: member.name,
+        authorEmail: member.email,
+        image: blogImage.trim() || 'https://images.unsplash.com/photo-1546410531-bb4caa6b424d?auto=format&fit=crop&w=600&q=80',
+        tags: tagsArray,
+        status: 'pending' as const,
+        readingTime: Math.ceil(blogContent.trim().split(/\s+/).length / 150) || 3
+      };
+
+      if (onAddBlog) {
+        const success = await onAddBlog(newBlogPost as any);
+        if (success) {
+          setBlogSubmitSuccess('আপনার প্রবন্ধটি জেলা সম্পাদকের দপ্তরে সফলভাবে জমা হয়েছে। রিভিউ টিম যাচাই-বাছাই ও অনুমোদন করলে এই প্রবন্ধটি সবার জন্য প্রকাশ করা হবে।');
+          setBlogTitle('');
+          setBlogExcerpt('');
+          setBlogContent('');
+          setShowBlogForm(false);
+          if (onRefresh) onRefresh();
+        } else {
+          setBlogSubmitError('প্রবন্ধ জমা করা সম্ভব হয়নি। পুনরায় চেষ্টা করুন।');
+        }
+      } else {
+        setBlogSubmitError('সার্ভারে প্রবন্ধ গ্রহণের মডিউল সচল নয়।');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setBlogSubmitError('ত্রুটি: ' + err.message);
+    } finally {
+      setBlogSubmitLoading(false);
+    }
+  };
 
   // Profile Edit and History state variables
   const [isEditing, setIsEditing] = useState(false);
@@ -32,6 +96,7 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
     mobile: member.mobile || '',
     email: member.email || '',
     dob: member.dob || '',
+    bloodGroup: member.bloodGroup || '',
     address: member.address || '',
     institution: member.institution || '',
     department: member.department || '',
@@ -45,6 +110,7 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
       mobile: member.mobile || '',
       email: member.email || '',
       dob: member.dob || '',
+      bloodGroup: member.bloodGroup || '',
       address: member.address || '',
       institution: member.institution || '',
       department: member.department || '',
@@ -62,7 +128,8 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
       { key: 'name', label: 'নাম' },
       { key: 'mobile', label: 'মোবাইল ফোন নম্বর' },
       { key: 'email', label: 'দাপ্তরিক ইমেইল' },
-      { key: 'dob', label: 'রক্তের গ্রুপ / DOB' },
+      { key: 'dob', label: 'জন্ম তারিখ' },
+      { key: 'bloodGroup', label: 'রক্তের গ্রুপ' },
       { key: 'address', label: 'বর্তমান ঠিকানা' },
       { key: 'institution', label: 'শিক্ষা প্রতিষ্ঠান' },
       { key: 'department', label: 'শ্রেণি বা বিভাগ' },
@@ -224,6 +291,27 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
           throw new Error('সদস্য প্রোফাইল লিংকের ডাটাবেজ আপডেট ব্যর্থ হয়েছে।');
         }
         
+        // Log to edit history
+        const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+        const editedBy = member.email || 'সদস্য নিজে';
+        const photoChange = {
+          timestamp,
+          editedBy,
+          field: 'প্রোফাইল ছবি / Photo',
+          oldValue: member.photoUrl || 'নাই/None',
+          newValue: data.url
+        };
+        const updatedHistory = [...(member.editHistory || []), photoChange];
+        const updatedMember: MemberRegistration = {
+          ...member,
+          photoUrl: data.url,
+          editHistory: updatedHistory
+        };
+
+        if (onUpdateMember) {
+          await onUpdateMember(updatedMember);
+        }
+
         // Refresh the db context in parents
         if (onRefresh) {
           await onRefresh();
@@ -268,6 +356,28 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
         if (!updateRes.ok) {
           throw new Error('সদস্য প্রোফাইল লিংকের ডাটাবেজ আপডেট ব্যর্থ হয়েছে।');
         }
+
+        // Log to edit history
+        const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+        const editedBy = member.email || 'সদস্য নিজে';
+        const photoChange = {
+          timestamp,
+          editedBy,
+          field: 'প্রোফাইল ছবি / Photo',
+          oldValue: member.photoUrl || 'নাই/None',
+          newValue: data.url
+        };
+        const updatedHistory = [...(member.editHistory || []), photoChange];
+        const updatedMember: MemberRegistration = {
+          ...member,
+          photoUrl: data.url,
+          editHistory: updatedHistory
+        };
+
+        if (onUpdateMember) {
+          await onUpdateMember(updatedMember);
+        }
+
         setPhotoUrlInput('');
         // Refresh the db context in parents
         if (onRefresh) {
@@ -431,7 +541,7 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
 
                       <div>
                         <span className="text-[7.5px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">রক্তের গ্রুপ / Blood</span>
-                        <span className="text-[10px] text-rose-450 font-bold block leading-tight mt-0.5">{member.dob || 'N/A'}</span>
+                        <span className="text-[10px] text-rose-450 font-bold block leading-tight mt-0.5">{member.bloodGroup || 'N/A'}</span>
                       </div>
 
                       <div className="col-span-2">
@@ -742,11 +852,31 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
                 </div>
 
                 <div className="space-y-1">
-                  <span className="text-[10px] text-zinc-400 block font-mono">রক্তের গ্রুপ / DOB</span>
+                  <span className="text-[10px] text-zinc-400 block font-mono">জন্ম তারিখ (DOB)</span>
                   <span className="font-bold text-zinc-850 dark:text-zinc-200 flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5 text-zinc-400" />
                     <span className="font-mono">{member.dob || 'তথ্য নাই'}</span>
                   </span>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[10px] text-zinc-400 block font-mono">রক্তের গ্রুপ (Blood Group)</span>
+                  {member.bloodGroup ? (
+                    <span className="font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                      <span className="bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded border border-rose-100 dark:border-rose-900/40 text-xs font-mono font-bold">{member.bloodGroup}</span>
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-zinc-500 italic text-[11px]">সেট করা নাই</span>
+                      <button
+                        type="button"
+                        onClick={() => startEditing()}
+                        className="text-[9px] bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900 border border-rose-200 dark:border-rose-900/50 text-rose-600 dark:text-rose-400 px-2 py-0.5 rounded font-bold cursor-pointer transition-all duration-150 inline-flex items-center"
+                      >
+                        সেট করুন (Set Now)
+                      </button>
+                    </span>
+                  )}
                 </div>
 
                 <div className="space-y-1">
@@ -812,13 +942,28 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
                   </div>
 
                   <div>
-                    <label className="block text-[10px] text-zinc-400 mb-1">রক্তের গ্রুপ / Birthday / DOB</label>
+                    <label className="block text-[10px] text-zinc-400 mb-1">জন্ম তারিখ (Date of Birth / DOB)</label>
                     <input
                       type="text"
+                      placeholder="যেমন: ১৫ আগস্ট ২০০২"
                       className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-rose-500"
                       value={editForm.dob}
                       onChange={(e) => setEditForm({ ...editForm, dob: e.target.value })}
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] text-zinc-400 mb-1">রক্তের গ্রুপ (Blood Group)</label>
+                    <select
+                      className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-rose-500"
+                      value={editForm.bloodGroup}
+                      onChange={(e) => setEditForm({ ...editForm, bloodGroup: e.target.value })}
+                    >
+                      <option value="">নির্বাচন করুন</option>
+                      {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(bg => (
+                        <option key={bg} value={bg}>{bg}</option>
+                      ))}
+                    </select>
                   </div>
 
                   <div>
@@ -932,6 +1077,175 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
               </div>
             </div>
           )}
+
+          {/* Member Blog Writing and Approval Panel */}
+          <div className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded p-5 sm:p-6 shadow-xs space-y-4 font-sans">
+            <div className="flex items-center justify-between pb-2.5 border-b border-zinc-100 dark:border-zinc-900">
+              <h3 className="text-xs font-bold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
+                <FileText className="w-4 h-4 text-rose-600" />
+                <span>আমার রাজনৈতিক ও বৈপ্লবিক লেখনী (My Blogs)</span>
+              </h3>
+              <button
+                onClick={() => {
+                  setShowBlogForm(!showBlogForm);
+                  setBlogSubmitError('');
+                  setBlogSubmitSuccess('');
+                }}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-rose-600 text-white hover:bg-rose-700 rounded text-[10px] font-bold cursor-pointer transition shadow-xs"
+              >
+                {showBlogForm ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                <span>{showBlogForm ? 'বন্ধ করুন' : 'নতুন প্রবন্ধ লিখুন'}</span>
+              </button>
+            </div>
+
+            {/* Success and Error messages */}
+            {blogSubmitSuccess && (
+              <div className="p-3 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-xs rounded leading-relaxed">
+                {blogSubmitSuccess}
+              </div>
+            )}
+            {blogSubmitError && (
+              <div className="p-3 bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-xs rounded leading-relaxed">
+                {blogSubmitError}
+              </div>
+            )}
+
+            {/* Create Blog Form */}
+            {showBlogForm && (
+              <form onSubmit={handleBlogSubmit} className="space-y-3.5 bg-zinc-50 dark:bg-zinc-900/60 p-4 rounded border border-zinc-200 dark:border-zinc-850">
+                <h4 className="text-[11px] font-bold uppercase tracking-wider text-rose-650">নতুন প্রবন্ধ খসড়া</h4>
+                
+                <div className="space-y-1">
+                  <label className="text-[10px] text-zinc-500 font-bold block">প্রবন্ধের শিরোনাম (Title) <span className="text-rose-500">*</span></label>
+                  <input
+                    type="text"
+                    required
+                    value={blogTitle}
+                    onChange={(e) => setBlogTitle(e.target.value)}
+                    placeholder="যেমনঃ শিক্ষাক্ষেত্রে নৈরাজ্য ও আমাদের করণীয়"
+                    className="w-full text-xs p-2 rounded-sm border border-zinc-200 bg-white dark:bg-zinc-950 dark:border-zinc-850 dark:text-white"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] text-zinc-500 font-bold block">সংক্ষিপ্ত পরিচিতি / সারসংক্ষেপ (Excerpt) <span className="text-rose-500">*</span></label>
+                  <input
+                    type="text"
+                    required
+                    value={blogExcerpt}
+                    onChange={(e) => setBlogExcerpt(e.target.value)}
+                    placeholder="পাঠককে আকৃষ্ট করতে ২-৩ লাইনের সংক্ষিপ্ত বর্ণনা লিখুন..."
+                    className="w-full text-xs p-2 rounded-sm border border-zinc-200 bg-white dark:bg-zinc-950 dark:border-zinc-850 dark:text-white"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-zinc-500 font-bold block">ক্যাটাগরি / বিভাগ</label>
+                    <select
+                      value={blogCategory}
+                      onChange={(e) => setBlogCategory(e.target.value)}
+                      className="w-full text-xs p-2 rounded-sm border border-zinc-200 bg-white dark:bg-zinc-950 dark:border-zinc-850 dark:text-white"
+                    >
+                      <option value="আজকালকার রাজনীতি">আজকালকার রাজনীতি</option>
+                      <option value="শিক্ষা ও আদর্শ">শিক্ষা ও আদর্শ</option>
+                      <option value="দলীয় পর্যালোচনা">দলীয় পর্যালোচনা</option>
+                      <option value="ঐতিহাসিক সংগ্রাম">ঐতিহাসিক সংগ্রাম</option>
+                      <option value="মতামত ও প্রবন্ধ">মতামত ও প্রবন্ধ</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-zinc-500 font-bold block">ট্যাগসমূহ (কমা দিয়ে আলাদা করুন)</label>
+                    <input
+                      type="text"
+                      value={blogTags}
+                      onChange={(e) => setBlogTags(e.target.value)}
+                      placeholder="যেমনঃ শিক্ষা, সংগ্রাম, ছাত্রফ্রন্ট"
+                      className="w-full text-xs p-2 rounded-sm border border-zinc-200 bg-white dark:bg-zinc-950 dark:border-zinc-850 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] text-zinc-500 font-bold block">ফিচার্ড ছবির লিংক (Image URL)</label>
+                  <input
+                    type="url"
+                    value={blogImage}
+                    onChange={(e) => setBlogImage(e.target.value)}
+                    placeholder="https://images.unsplash.com/..."
+                    className="w-full text-xs p-2 rounded-sm border border-zinc-200 bg-white dark:bg-zinc-950 dark:border-zinc-850 dark:text-white font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] text-zinc-500 font-bold block">প্রবন্ধের মূল বিষয়বস্তু (Content - Markdown supported) <span className="text-rose-500">*</span></label>
+                  <textarea
+                    required
+                    rows={8}
+                    value={blogContent}
+                    onChange={(e) => setBlogContent(e.target.value)}
+                    placeholder="আপনার প্রবন্ধের বিস্তারিত ও বিশদ আলোচনা এখানে লিখুন..."
+                    className="w-full text-xs p-2.5 rounded-sm border border-zinc-200 bg-white dark:bg-zinc-950 dark:border-zinc-850 dark:text-white font-sans leading-relaxed"
+                  />
+                </div>
+
+                <div className="pt-1.5 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowBlogForm(false)}
+                    className="px-3.5 py-1.5 bg-zinc-200 dark:bg-zinc-850 text-zinc-800 dark:text-zinc-200 text-xs font-bold rounded cursor-pointer hover:bg-zinc-300 transition"
+                  >
+                    বাতিল
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={blogSubmitLoading}
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-rose-600 text-white text-xs font-bold rounded cursor-pointer hover:bg-rose-700 transition disabled:opacity-50 shadow-xs"
+                  >
+                    {blogSubmitLoading ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Send className="w-3.5 h-3.5" />
+                    )}
+                    <span>{blogSubmitLoading ? 'জমা হচ্ছে...' : 'রিভিউতে পাঠান (Submit)'}</span>
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* List Submitted Blogs */}
+            <div className="space-y-2 text-zinc-800 dark:text-zinc-200">
+              <h4 className="text-[10px] uppercase tracking-wider font-extrabold text-zinc-400">আমার জমাকৃত প্রবন্ধসমূহের তালিকা ({(blogs || []).filter(b => b.authorEmail === member.email).length})</h4>
+              
+              {((blogs || []).filter(b => b.authorEmail === member.email)).length === 0 ? (
+                <div className="p-4 bg-zinc-50 dark:bg-zinc-900/40 rounded border border-zinc-200/50 dark:border-zinc-900 text-center text-zinc-400 italic text-[11px]">
+                  প্রবন্ধের তালিকা শূন্য! প্রগতিশীল ও বিপ্লবী সাহিত্য চর্চা বাড়াতে আপনার প্রথম প্রবন্ধটি সাবমিট করুন।
+                </div>
+              ) : (
+                <div className="divide-y divide-zinc-150 dark:divide-zinc-850 max-h-[250px] overflow-y-auto pr-1">
+                  {(blogs || []).filter(b => b.authorEmail === member.email).map((b) => (
+                    <div key={b.id} className="py-2.5 flex items-center justify-between text-xs gap-3">
+                      <div className="min-w-0">
+                        <span className="text-[9px] bg-zinc-100 dark:bg-zinc-900 text-zinc-500 font-mono px-1 py-0.5 rounded font-bold mr-1.5">{b.category}</span>
+                        <h5 className="font-bold text-zinc-850 dark:text-zinc-200 truncate mt-0.5">{b.title}</h5>
+                        <p className="text-[9px] text-zinc-400 mt-0.5">{b.date || 'আজ'}</p>
+                      </div>
+                      <div className="shrink-0">
+                        {b.status === 'pending' ? (
+                          <span className="text-[9px] font-bold text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-950/20 border border-amber-200/50 px-2 py-0.5 rounded">রিভিউাধীন (Pending)</span>
+                        ) : b.status === 'rejected' ? (
+                          <span className="text-[9px] font-bold text-rose-700 bg-rose-50 dark:text-rose-450 dark:bg-rose-955 px-2 py-0.5 rounded">বাতিলকৃত (Rejected)</span>
+                        ) : (
+                          <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 dark:text-emerald-450 dark:bg-emerald-950/20 border border-emerald-250 px-2 py-0.5 rounded">প্রকাশিত (Published)</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Tabular Shortcuts: Latest Circulars & Study Library */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
