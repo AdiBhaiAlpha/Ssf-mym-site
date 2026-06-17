@@ -430,7 +430,7 @@ export default function CardVerificationModal({
                     </div>
 
                     {/* Member info card details */}
-                    <div className="bg-zinc-900/80 border border-zinc-850 p-4 rounded-lg relative overflow-hidden flex flex-col sm:flex-row items-center sm:items-start gap-4">
+                    <div id="member-identity-card" className="bg-zinc-900/80 border border-zinc-850 p-4 rounded-lg relative overflow-hidden flex flex-col sm:flex-row items-center sm:items-start gap-4">
                       {/* background watermarks */}
                       <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-550/5 blur-[50px] rounded-full pointer-events-none" />
 
@@ -452,12 +452,12 @@ export default function CardVerificationModal({
                       <div className="flex-1 w-full space-y-2 text-xs">
                         <div>
                           <span className="text-[10px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">পূর্ণ নাম / Full Name</span>
-                          <strong className="text-zinc-150 font-extrabold text-sm block leading-tight mt-0.5">{targetMember.name}</strong>
+                          <strong className="text-white font-extrabold text-sm block leading-tight mt-0.5">{targetMember.name}</strong>
                         </div>
 
                         <div>
                           <span className="text-[10px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">সাংগঠনিক স্তর (Badge)</span>
-                          <span className="inline-block mt-1 px-2.5 py-1 text-[10px] bg-rose-650/35 border border-rose-600/40 text-rose-450 font-sans font-bold rounded">
+                          <span className="inline-block mt-1 px-2.5 py-1 text-[10px] bg-rose-600/80 border border-rose-500 text-white font-sans font-extrabold rounded shadow-xs">
                             {getMemberBadgeText(targetMember)}
                           </span>
                         </div>
@@ -469,7 +469,7 @@ export default function CardVerificationModal({
                           </div>
                           <div>
                             <span className="text-[9px] text-zinc-500 uppercase tracking-wider block font-bold leading-none">রক্তের গ্রুপ</span>
-                            <span className="text-rose-450 font-bold block mt-1">{targetMember.bloodGroup || 'সংগৃহীত নয়'}</span>
+                            <span className="text-white font-bold block mt-1">{targetMember.bloodGroup || 'সংগৃহীত নয়'}</span>
                           </div>
                         </div>
 

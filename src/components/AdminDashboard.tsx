@@ -3,6 +3,21 @@ import { Shield, ToggleLeft, ToggleRight, Settings, PlusCircle, Pencil, Trash2, 
 import { News, Blog, Event, Book, Circular, GalleryItem, MemberRegistration, AuditLog, PageVisit, WebSettings, OrgWing, MemberLoginLog, getMemberBadgeText } from '../types';
 import CardVerificationModal from './CardVerificationModal';
 
+const BADGE_PRESETS = [
+  'প্রাথমিক সদস্য',
+  'কর্মী সদস্য',
+  'পূর্ণ সদস্য',
+  'সভাপতি, ময়মনসিংহ জেলা শাখা',
+  'সহ-সভাপতি, ময়মনসিংহ জেলা শাখা',
+  'সাধারণ সম্পাদক, ময়মনসিংহ জেলা শাখা',
+  'সাংগঠনিক সম্পাদক, ময়মনসিংহ জেলা শাখা',
+  'দপ্তর সম্পাদক, ময়মনসিংহ জেলা শাখা',
+  'প্রচার ও প্রকাশনা সম্পাদক, ময়মনসিংহ জেলা শাখা',
+  'কোষাধ্যক্ষ, ময়মনসিংহ জেলা শাখা',
+  'সদস্য, ময়মনসিংহ জেলা শাখা',
+  'অন্যান্য'
+];
+
 interface AdminDashboardProps {
   db: {
     news: News[];
@@ -381,6 +396,45 @@ export default function AdminDashboard({
         setEditingMemberId(null);
       } else {
         alert('ডাটাবেজ আপডেট ব্যর্থ হয়েছে।');
+      }
+    }
+  };
+
+  const handleDirectBadgeSave = async (member: MemberRegistration) => {
+    const finalBadgeText = customBadgeText.trim();
+    if (!finalBadgeText) {
+      alert('সদস্য ব্যাজ খালি হতে পারে না। অনুগ্রহ করে একটি ব্যাজ টেক্সট লিখুন বা নির্বাচন করুন।');
+      return;
+    }
+
+    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const editedBy = userEmail || 'এডমিন';
+
+    const oldVal = member.badgeText || '';
+    const changes = [
+      {
+        timestamp,
+        editedBy,
+        field: 'ব্যাজ টেক্সট',
+        oldValue: oldVal,
+        newValue: finalBadgeText,
+      }
+    ];
+
+    const updatedMember: MemberRegistration = {
+      ...member,
+      badgeText: finalBadgeText,
+      editHistory: [...(member.editHistory || []), ...changes]
+    };
+
+    if (onUpdateMember) {
+      const ok = await onUpdateMember(updatedMember);
+      if (ok) {
+        setEditingBadgeMemberId(null);
+        setSelectedBadgePreset('');
+        setCustomBadgeText('');
+      } else {
+        alert('ডাটাবেজ আপডেট করতে সমস্যা হয়েছে।');
       }
     }
   };
@@ -2778,14 +2832,33 @@ export default function AdminDashboard({
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-350 uppercase mb-1">ব্যাজ টাইটেল (যেমন: সাধারণ সদস্য)</label>
-                      <input
-                        type="text"
-                        placeholder="যেমন: কর্মী সদস্য"
-                        className="w-full px-3 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs text-zinc-900 dark:text-white"
-                        value={newMBadgeText}
-                        onChange={(e) => setNewMBadgeText(e.target.value)}
-                      />
+                      <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-350 uppercase mb-1">ব্যাজ টাইটেল / Badge Title</label>
+                      <select
+                        className="w-full px-3 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs font-sans text-zinc-900 dark:text-white mb-2"
+                        value={BADGE_PRESETS.includes(newMBadgeText) ? newMBadgeText : (newMBadgeText ? 'অন্যান্য' : 'কর্মী সদস্য')}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === 'অন্যান্য') {
+                            setNewMBadgeText('');
+                          } else {
+                            setNewMBadgeText(val);
+                          }
+                        }}
+                      >
+                        <option value="">নির্বাচن করুন...</option>
+                        {BADGE_PRESETS.map((preset) => (
+                          <option key={preset} value={preset}>{preset}</option>
+                        ))}
+                      </select>
+                      {(!BADGE_PRESETS.includes(newMBadgeText) || newMBadgeText === 'অন্যান্য' || !newMBadgeText) && (
+                        <input
+                          type="text"
+                          placeholder="নতুন কাস্টম ব্যাজ লিখুন..."
+                          className="w-full px-3 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs text-zinc-900 dark:text-white mt-1"
+                          value={newMBadgeText}
+                          onChange={(e) => setNewMBadgeText(e.target.value)}
+                        />
+                      )}
                     </div>
 
                     <div className="md:col-span-2">
@@ -2920,6 +2993,91 @@ export default function AdminDashboard({
                           </li>
                         )}
                       </ul>
+
+                      {/* Direct Badge Setting Control */}
+                      <div className="mt-4 p-3 bg-zinc-100 dark:bg-zinc-800/50 rounded border border-zinc-200 dark:border-zinc-800 font-sans text-xs">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-bold text-zinc-700 dark:text-zinc-300">নির্ধারিত ব্যাজ:</span>
+                          <span className="px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 font-bold text-[10px] border border-emerald-200/50 dark:border-emerald-900/40">
+                            {getMemberBadgeText(member)}
+                          </span>
+                        </div>
+
+                        {editingBadgeMemberId === member.id ? (
+                          <div className="space-y-2 mt-2">
+                            <select
+                              className="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs text-zinc-900 dark:text-white"
+                              value={selectedBadgePreset}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setSelectedBadgePreset(val);
+                                if (val !== 'অন্যান্য') {
+                                  setCustomBadgeText(val); // direct sync
+                                } else {
+                                  setCustomBadgeText('');
+                                }
+                              }}
+                            >
+                              <option value="">নির্বাচন করুন...</option>
+                              {BADGE_PRESETS.map((preset) => (
+                                <option key={preset} value={preset}>{preset}</option>
+                              ))}
+                            </select>
+
+                            {selectedBadgePreset === 'অন্যান্য' && (
+                              <input
+                                type="text"
+                                placeholder="কাস্টম পজিশন বা ব্যাজ লিখুন..."
+                                className="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs text-zinc-900 dark:text-white mt-1"
+                                value={customBadgeText}
+                                onChange={(e) => setCustomBadgeText(e.target.value)}
+                              />
+                            )}
+
+                            <div className="flex gap-1.5 justify-end mt-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingBadgeMemberId(null);
+                                  setSelectedBadgePreset('');
+                                  setCustomBadgeText('');
+                                }}
+                                className="px-2.5 py-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded text-[10px] font-bold"
+                              >
+                                বাতিল
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDirectBadgeSave(member)}
+                                className="px-2.5 py-1 bg-emerald-600 text-white rounded text-[10px] font-bold hover:bg-emerald-700"
+                              >
+                                সংরক্ষণ করুন
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingBadgeMemberId(member.id);
+                              const currentBadge = member.badgeText || '';
+                              if (BADGE_PRESETS.includes(currentBadge)) {
+                                setSelectedBadgePreset(currentBadge);
+                                setCustomBadgeText(currentBadge);
+                              } else if (currentBadge) {
+                                setSelectedBadgePreset('অন্যান্য');
+                                setCustomBadgeText(currentBadge);
+                              } else {
+                                setSelectedBadgePreset('');
+                                setCustomBadgeText('');
+                              }
+                            }}
+                            className="text-emerald-600 dark:text-emerald-400 hover:underline inline-flex items-center gap-1 font-bold text-[11px] mt-1 cursor-pointer"
+                          >
+                            <Settings className="w-3.5 h-3.5" /> ব্যাজ পরিবর্তন করুন
+                          </button>
+                        )}
+                      </div>
 
                       <div className="mt-4 flex flex-wrap gap-2">
                         {member.status === 'pending' && (

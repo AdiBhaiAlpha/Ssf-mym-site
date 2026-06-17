@@ -497,7 +497,7 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="bg-rose-955 text-rose-450 font-sans text-[9px] font-extrabold border border-rose-900/40 px-2 py-0.5 rounded shadow-xs select-none uppercase tracking-wide">
+                    <span className="bg-rose-900/60 text-white font-sans text-[9px] font-extrabold border border-rose-700/50 px-2 py-0.5 rounded shadow-xs select-none uppercase tracking-wide">
                       {getMemberBadgeText(member)}
                     </span>
                   </div>
@@ -541,7 +541,7 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
 
                       <div>
                         <span className="text-[7.5px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">রক্তের গ্রুপ / Blood</span>
-                        <span className="text-[10px] text-rose-450 font-bold block leading-tight mt-0.5">{member.bloodGroup || 'N/A'}</span>
+                        <span className="text-[10px] text-white font-bold block leading-tight mt-0.5">{member.bloodGroup || 'N/A'}</span>
                       </div>
 
                       <div className="col-span-2">
