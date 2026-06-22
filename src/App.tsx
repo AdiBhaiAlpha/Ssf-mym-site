@@ -113,6 +113,9 @@ export default function App() {
       }
     }
 
+    // Explicitly set the site name as the page title as requested by the user
+    document.title = "সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ";
+
     // Auth state restore
     const savedEmail = localStorage.getItem('admin-email');
     if (savedEmail) {

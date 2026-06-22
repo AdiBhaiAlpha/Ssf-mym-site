@@ -389,264 +389,56 @@ export default function Navigation({
 
       <header className="sticky top-0 z-50 border-b border-rose-100 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md transition-colors duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-20">
-            {/* Logo / Title Area */}
+          {/* Mobile / Tablet Header Container (lg:hidden) */}
+          <div className="flex items-center justify-between h-20 lg:hidden">
+            {/* Logo / Title Area (Mobile) */}
             <div className="flex items-center">
               <div 
-                className="flex items-center space-x-3 cursor-pointer" 
+                className="flex items-center space-x-2.5 cursor-pointer" 
                 onClick={() => setCurrentTab('home')}
-                id="brand-logo"
+                id="brand-logo-mobile"
               >
                 <img 
                   src="https://i.ibb.co.com/F4MKM3R2/20260527-055637.png" 
                   alt="সমাজতান্ত্রিক ছাত্র ফ্রন্ট লোগো" 
                   referrerPolicy="no-referrer" 
-                  className="h-12 w-12 object-contain select-none" 
+                  className="h-11 w-11 object-contain select-none" 
                 />
                 <div>
-                  <h1 className="text-lg sm:text-xl font-bold text-rose-600 dark:text-rose-500 tracking-tight leading-4 font-sans">
+                  <h1 className="text-[15px] sm:text-base font-bold text-rose-600 dark:text-rose-500 tracking-tight leading-4 font-sans">
                     সমাজতান্ত্রিক ছাত্র ফ্রন্ট
                   </h1>
-                  <p className="text-[10px] text-zinc-600 dark:text-zinc-400 font-mono tracking-widest mt-0.5">
+                  <p className="text-[8.5px] text-zinc-650 dark:text-zinc-400 font-mono tracking-widest mt-0.5">
                     ময়মনসিংহ জেলা শাখা
                   </p>
                 </div>
               </div>
 
-              {/* SPB Party Affiliation Block (Desktop Only) */}
-              <div className="hidden md:flex items-center border-l border-zinc-200 dark:border-zinc-800 pl-4 ml-4 py-1 select-none">
+              {/* SPB Party Affiliation Block (Tablet Only) */}
+              <div className="hidden md:flex items-center border-l border-zinc-200 dark:border-zinc-800 pl-3 ml-3 py-1 select-none">
                 <img 
                   src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Flag_of_Socialist_Party_of_Bangladesh.svg/500px-Flag_of_Socialist_Party_of_Bangladesh.svg.png" 
                   alt="বাসদ পতাকা" 
                   referrerPolicy="no-referrer" 
-                  className="h-7 w-11 object-cover rounded shadow-xs border border-rose-950/10 mr-3" 
-                />
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-sans leading-none">
-                    মূল দলঃ
-                  </span>
-                  <span className="text-xs font-bold text-rose-700 dark:text-rose-400 font-sans mt-0.5 whitespace-nowrap">
-                    বাংলাদেশের সমাজতান্ত্রিক দল - বাসদ
-                  </span>
-                  <a 
-                    href="https://spb.org.bd/" 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
-                    className="text-[10px] text-rose-600 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300 underline font-sans font-medium transition duration-150 mt-0.5"
-                  >
-                    https://spb.org.bd/
-                  </a>
-                </div>
-              </div>
-            </div>
-
-            {/* Desktop Navigation */}
-            <nav className="hidden lg:flex items-center space-x-1">
-              {menuItems
-                .filter((item) => item.visible)
-                .map((item) => {
-                  const Icon = item.icon;
-                  const isActive = currentTab === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      id={`nav-link-${item.id}`}
-                      onClick={() => setCurrentTab(item.id)}
-                      className={`relative px-3 py-2 text-sm font-semibold transition-all duration-200 outline-none rounded-md flex items-center space-x-1.5 ${
-                        isActive
-                          ? 'text-rose-600 dark:text-rose-500 bg-rose-55_10 dark:bg-rose-950/30'
-                          : 'text-zinc-700 dark:text-zinc-300 hover:text-rose-600 dark:hover:text-rose-500 hover:bg-zinc-50 dark:hover:bg-zinc-900'
-                      }`}
-                    >
-                      <Icon className="w-4 h-4" />
-                      <span>{item.label}</span>
-                    </button>
-                  );
-                })}
-
-              {isAnyAdmin && (
-                <button
-                  id="nav-link-admin"
-                  onClick={() => setCurrentTab('admin')}
-                  className={`flex items-center space-x-1 px-3 py-2 rounded-md text-sm font-semibold transition-all duration-200 ${
-                    currentTab === 'admin'
-                      ? 'bg-rose-600 text-white shadow-sm'
-                      : 'bg-rose-600/10 text-rose-600 hover:bg-rose-600/20 dark:bg-rose-500/10 dark:text-rose-400'
-                  }`}
-                >
-                  <ShieldAlert className="w-4 h-4 animate-pulse" />
-                  <span>ড্যাশবোর্ড</span>
-                </button>
-              )}
-            </nav>
-
-            {/* Actions - Style Toggle / Login */}
-            <div className="hidden lg:flex items-center space-x-2">
-              {/* Global Search bar */}
-              <div className="relative mr-2 w-48 xl:w-56 focus-within:w-60 transition-all duration-300">
-                <span className="absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none">
-                  <Search className="h-3.5 w-3.5 text-zinc-400 dark:text-zinc-500" />
-                </span>
-                <input
-                  type="text"
-                  value={globalSearchQuery}
-                  onChange={(e) => setGlobalSearchQuery(e.target.value)}
-                  placeholder="নিবন্ধ, ইভেন্ট বা খবর খুঁজুন..."
-                  className="w-full pl-8 pr-3 py-1.5 text-[11px] bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500 focus:border-rose-500 text-zinc-900 dark:text-white"
+                  className="h-6 w-9 object-cover rounded shadow-xs" 
                 />
               </div>
-
-              <a
-                href="https://tally.so/r/44Jz8O"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-md shadow-sm transition-all mr-2 whitespace-nowrap"
-              >
-                <Award className="h-4 w-4" />
-                <span>সদস্য হোন</span>
-              </a>
-
-              <button
-                id="theme-toggle"
-                onClick={() => setDarkMode(!darkMode)}
-                className="p-2 text-zinc-500 hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-500 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-all duration-200"
-                title="থিম পরিবর্তন"
-              >
-                {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-              </button>
-
-              {/* Notification Bell with Dropdown */}
-              {userEmail && (
-                <div className="relative">
-                  <button
-                    id="btn-nav-notifications"
-                    onClick={() => setShowNotifications(!showNotifications)}
-                    className="p-2 text-zinc-500 hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-500 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-all duration-200 relative"
-                    title="নিমন্ত্রণ ও বিজ্ঞপ্তি"
-                  >
-                    <Bell className="w-5 h-5" />
-                    {pendingInvitations.length > 0 && (
-                      <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-600 rounded-full animate-ping" />
-                    )}
-                    {pendingInvitations.length > 0 && (
-                      <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-600 rounded-full" />
-                    )}
-                  </button>
-
-                  <AnimatePresence>
-                    {showNotifications && (
-                      <>
-                        <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
-                        <motion.div
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: 10 }}
-                          className="absolute right-0 mt-2 w-80 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded-lg shadow-xl z-50 p-4 text-xs font-sans text-zinc-800 dark:text-zinc-200"
-                        >
-                          <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-900 pb-2 mb-3">
-                            <h4 className="font-bold flex items-center gap-1.5 text-zinc-900 dark:text-white">
-                              <Bell className="w-4 h-4 text-rose-600" />
-                              <span>নিমন্ত্রণ ও বিজ্ঞপ্তি ({pendingInvitations.length})</span>
-                            </h4>
-                          </div>
-
-                          {pendingInvitations.length === 0 ? (
-                            <div className="text-center py-6 text-zinc-400 dark:text-zinc-650 italic">
-                              কোনো পেন্ডিং এডমিন নিমন্ত্রণ বা বিজ্ঞপ্তি নেই।
-                            </div>
-                          ) : (
-                            <div className="space-y-3">
-                              {pendingInvitations.map((invite: any) => (
-                                <div
-                                  key={invite.id}
-                                  className="p-3 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-100 dark:border-zinc-900 rounded-md"
-                                >
-                                  <p className="text-[11px] leading-relaxed text-zinc-700 dark:text-zinc-300">
-                                    কমরেড <span className="font-semibold text-rose-600">{invite.invitedBy}</span> আপনাকে{' '}
-                                    <span className="font-bold">
-                                      {invite.role === 'super_admin' ? 'সুপার এডমিন' : 'সমন্বয়ক এডমিন'}
-                                    </span>{' '}
-                                    হিসেবে দায়িত্বে যোগ দেওয়ার নিমন্ত্রণ পাঠিয়েছেন।
-                                  </p>
-                                  <p className="text-[9px] text-zinc-400 mt-1 font-mono">{invite.timestamp}</p>
-                                  <div className="mt-3 flex items-center justify-end gap-2">
-                                    <button
-                                      onClick={async () => {
-                                        if (onInviteAction) {
-                                          await onInviteAction(invite.id, 'declined');
-                                        }
-                                      }}
-                                      className="px-2.5 py-1 bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-750 text-zinc-800 dark:text-zinc-200 rounded text-[10px] font-bold transition"
-                                    >
-                                      ডিক্লাইন
-                                    </button>
-                                    <button
-                                      onClick={async () => {
-                                        if (onInviteAction) {
-                                          await onInviteAction(invite.id, 'accepted');
-                                          setCurrentTab('admin'); // Directly take them to the dashboard
-                                          setShowNotifications(false);
-                                        }
-                                      }}
-                                      className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded text-[10px] font-bold shadow-sm transition"
-                                    >
-                                      এপ্রুভ করুন
-                                    </button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </motion.div>
-                      </>
-                    )}
-                  </AnimatePresence>
-                </div>
-              )}
-
-              {userEmail ? (
-                <div className="flex items-center space-x-3 ml-2 border-l pl-3 border-zinc-200 dark:border-zinc-800">
-                  <div className="text-right">
-                    <p className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 truncate max-w-[120px]">
-                      {adminLabel}
-                    </p>
-                    <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">অনলাইন</p>
-                  </div>
-                  <button
-                    id="btn-logout"
-                    onClick={onLogout}
-                    className="p-2 border border-rose-200 dark:border-rose-900/50 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-full text-rose-600"
-                    title="লগ আউট"
-                  >
-                    <LogOut className="w-4 h-4" />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  id="btn-login-open"
-                  onClick={() => setShowLoginModal(true)}
-                  className="flex items-center space-x-1.5 px-4 py-2 bg-zinc-900 border border-zinc-800 dark:bg-zinc-100 dark:border-zinc-200 text-white dark:text-zinc-900 hover:bg-zinc-830 dark:hover:bg-white text-sm font-semibold rounded-md shadow-sm transition-all duration-200"
-                >
-                  <LogIn className="w-4 h-4" />
-                  <span>লগইন</span>
-                </button>
-              )}
             </div>
 
             {/* Mobile Actions Header area */}
-            <div className="flex items-center space-x-2 lg:hidden">
+            <div className="flex items-center space-x-2">
               {userEmail && (
                 <div className="relative font-sans">
                   <button
                     onClick={() => setShowNotifications(!showNotifications)}
-                    className="p-2 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full relative transition-all"
+                    className="p-1.5 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full relative transition-all"
                   >
                     <Bell className="w-5 h-5" />
                     {pendingInvitations.length > 0 && (
-                      <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-600 rounded-full animate-ping" />
+                      <span className="absolute top-1 right-1 w-2 h-2 bg-rose-600 rounded-full animate-ping" />
                     )}
                     {pendingInvitations.length > 0 && (
-                      <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-600 rounded-full" />
+                      <span className="absolute top-1 right-1 w-2 h-2 bg-rose-600 rounded-full" />
                     )}
                   </button>
 
@@ -682,7 +474,7 @@ export default function Navigation({
                                     কমরেড <span className="font-semibold text-rose-600">{invite.invitedBy}</span> আপনাকে{' '}
                                     <span className="font-bold">
                                       {invite.role === 'super_admin' ? 'সুপার এডমিন' : 'সমন্বয়ক এডমিন'}
-                                    </span>{' '}
+                                    </span> {' '}
                                     হিসেবে দায়িত্ব বা নিমন্ত্রণ জানিয়েছেন।
                                   </p>
                                   <div className="mt-3 flex items-center justify-end gap-2">
@@ -734,6 +526,252 @@ export default function Navigation({
               >
                 {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
               </button>
+            </div>
+          </div>
+
+          {/* Desktop Dual-Row Header (Polished, never overflows, allows menu wrapping) */}
+          <div className="hidden lg:flex flex-col w-full py-4">
+            {/* Row 1: Logo & General Action Buttons Area */}
+            <div className="flex items-center justify-between w-full pb-4">
+              <div className="flex items-center">
+                <div 
+                  className="flex items-center space-x-3 cursor-pointer select-none" 
+                  onClick={() => setCurrentTab('home')}
+                  id="brand-logo-desktop"
+                >
+                  <img 
+                    src="https://i.ibb.co.com/F4MKM3R2/20260527-055637.png" 
+                    alt="সমাজতান্ত্রিক ছাত্র ফ্রন্ট লোগো" 
+                    referrerPolicy="no-referrer" 
+                    className="h-12 w-12 object-contain select-none" 
+                  />
+                  <div>
+                    <h1 className="text-xl font-bold text-rose-600 dark:text-rose-500 tracking-tight leading-4 font-sans">
+                      সমাজতান্ত্রিক ছাত্র ফ্রন্ট
+                    </h1>
+                    <p className="text-[10px] text-zinc-650 dark:text-zinc-400 font-mono tracking-widest mt-1">
+                      ময়মনসিংহ জেলা শাখা
+                    </p>
+                  </div>
+                </div>
+
+                {/* SPB Party Affiliation Block (Desktop Only) */}
+                <div className="flex items-center border-l border-zinc-200 dark:border-zinc-800 pl-4 ml-4 py-1 select-none">
+                  <img 
+                    src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Flag_of_Socialist_Party_of_Bangladesh.svg/500px-Flag_of_Socialist_Party_of_Bangladesh.svg.png" 
+                    alt="বাসদ পতাকা" 
+                    referrerPolicy="no-referrer" 
+                    className="h-7 w-11 object-cover rounded shadow-xs border border-rose-950/10 mr-3" 
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-sans leading-none">
+                      মূল দলঃ
+                    </span>
+                    <span className="text-xs font-bold text-rose-700 dark:text-rose-400 font-sans mt-0.5 whitespace-nowrap">
+                      বাংলাদেশের সমাজতান্ত্রিক দল - বাসদ
+                    </span>
+                    <a 
+                      href="https://spb.org.bd/" 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="text-[10px] text-rose-600 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300 underline font-sans font-medium transition duration-150 mt-0.5"
+                    >
+                      https://spb.org.bd/
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons & Utilities */}
+              <div className="flex items-center space-x-2.5">
+                {/* Global Search bar */}
+                <div className="relative w-48 xl:w-56 focus-within:w-60 transition-all duration-300">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none">
+                    <Search className="h-3.5 w-3.5 text-zinc-400 dark:text-zinc-500" />
+                  </span>
+                  <input
+                    type="text"
+                    value={globalSearchQuery}
+                    onChange={(e) => setGlobalSearchQuery(e.target.value)}
+                    placeholder="নিবন্ধ, ইভেন্ট বা খবর খুঁজুন..."
+                    className="w-full pl-8 pr-3 py-1.5 text-[11px] bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500 focus:border-rose-500 text-zinc-900 dark:text-white_10"
+                  />
+                </div>
+
+                <a
+                  href="https://tally.so/r/44Jz8O"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-md shadow-sm transition-all whitespace-nowrap"
+                >
+                  <Award className="h-4 w-4" />
+                  <span>সদস্য হোন</span>
+                </a>
+
+                <button
+                  onClick={() => setDarkMode(!darkMode)}
+                  className="p-2 text-zinc-500 hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-500 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-all duration-200"
+                  title="থিম পরিবর্তন"
+                >
+                  {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                </button>
+
+                {/* Notification Bell with Dropdown */}
+                {userEmail && (
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowNotifications(!showNotifications)}
+                      className="p-2 text-zinc-500 hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-500 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-all duration-200 relative"
+                      title="নিমন্ত্রণ ও বিজ্ঞপ্তি"
+                    >
+                      <Bell className="w-5 h-5" />
+                      {pendingInvitations.length > 0 && (
+                        <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-600 rounded-full animate-ping" />
+                      )}
+                      {pendingInvitations.length > 0 && (
+                        <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-600 rounded-full" />
+                      )}
+                    </button>
+
+                    <AnimatePresence>
+                      {showNotifications && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 10 }}
+                            className="absolute right-0 mt-2 w-80 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded-lg shadow-xl z-50 p-4 text-xs font-sans text-zinc-800 dark:text-zinc-200"
+                          >
+                            <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-900 pb-2 mb-3">
+                              <h4 className="font-bold flex items-center gap-1.5 text-zinc-900 dark:text-white">
+                                <Bell className="w-4 h-4 text-rose-600" />
+                                <span>নিমন্ত্রণ ও বিজ্ঞপ্তি ({pendingInvitations.length})</span>
+                              </h4>
+                            </div>
+
+                            {pendingInvitations.length === 0 ? (
+                              <div className="text-center py-6 text-zinc-400 dark:text-zinc-650 italic">
+                                কোনো পেন্ডিং এডমিন নিমন্ত্রণ বা বিজ্ঞপ্তি নেই।
+                              </div>
+                            ) : (
+                              <div className="space-y-3">
+                                {pendingInvitations.map((invite: any) => (
+                                  <div
+                                    key={invite.id}
+                                    className="p-3 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-100 dark:border-zinc-900 rounded-md"
+                                  >
+                                    <p className="text-[11px] leading-relaxed text-zinc-700 dark:text-zinc-300">
+                                      কমরেড <span className="font-semibold text-rose-600">{invite.invitedBy}</span> আপনাকে{' '}
+                                      <span className="font-bold">
+                                        {invite.role === 'super_admin' ? 'সুপার এডমিন' : 'সমন্বয়ক এডমিন'}
+                                      </span>{' '}
+                                      হিসেবে দায়িত্বে যোগ দেওয়ার নিমন্ত্রণ পাঠিয়েছেন।
+                                    </p>
+                                    <p className="text-[9px] text-zinc-400 mt-1 font-mono">{invite.timestamp}</p>
+                                    <div className="mt-3 flex items-center justify-end gap-2">
+                                      <button
+                                        onClick={async () => {
+                                          if (onInviteAction) {
+                                            await onInviteAction(invite.id, 'declined');
+                                          }
+                                        }}
+                                        className="px-2.5 py-1 bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-750 text-zinc-800 dark:text-zinc-200 rounded text-[10px] font-bold transition"
+                                      >
+                                        ডিক্লাইন
+                                      </button>
+                                      <button
+                                        onClick={async () => {
+                                          if (onInviteAction) {
+                                            await onInviteAction(invite.id, 'accepted');
+                                            setCurrentTab('admin');
+                                            setShowNotifications(false);
+                                          }
+                                        }}
+                                        className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded text-[10px] font-bold shadow-sm transition"
+                                      >
+                                        এপ্রুভ করুন
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </motion.div>
+                        </>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
+
+                {userEmail ? (
+                  <div className="flex items-center space-x-3 border-l pl-3 border-zinc-200 dark:border-zinc-800">
+                    <div className="text-right">
+                      <p className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 truncate max-w-[120px]">
+                        {adminLabel}
+                      </p>
+                      <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">অনলাইন</p>
+                    </div>
+                    <button
+                      onClick={onLogout}
+                      className="p-2 border border-rose-200 dark:border-rose-900/50 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-full text-rose-600"
+                      title="লগ আউট"
+                    >
+                      <LogOut className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowLoginModal(true)}
+                    className="flex items-center space-x-1.5 px-4 py-2 bg-zinc-900 border border-zinc-800 dark:bg-zinc-100 dark:border-zinc-200 text-white dark:text-zinc-900 hover:bg-rose-955 hover:text-white text-xs font-semibold rounded-md shadow-sm transition-all duration-200"
+                  >
+                    <LogIn className="w-4 h-4" />
+                    <span>লগইন</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Row 2: Sub-NavBar menu items (With auto-wrap, beautiful gap separation & perfect alignments) */}
+            <div className="border-t border-rose-100 dark:border-zinc-900/80 pt-3">
+              <nav className="flex items-center justify-center flex-wrap gap-x-2 gap-y-2 w-full">
+                {menuItems
+                  .filter((item) => item.visible)
+                  .map((item) => {
+                    const Icon = item.icon;
+                    const isActive = currentTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        id={`nav-link-${item.id}`}
+                        onClick={() => setCurrentTab(item.id)}
+                        className={`px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-150 rounded-md flex items-center space-x-1.5 outline-none ${
+                          isActive
+                            ? 'text-rose-600 dark:text-rose-500 bg-rose-50 dark:bg-rose-950/30 border border-rose-150/70 dark:border-rose-900/70 font-bold'
+                            : 'text-zinc-700 dark:text-zinc-300 hover:text-rose-600 dark:hover:text-rose-500 hover:bg-zinc-100 dark:hover:bg-zinc-900'
+                        }`}
+                      >
+                        <Icon className="w-3.5 h-3.5" />
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  })}
+
+                {isAnyAdmin && (
+                  <button
+                    id="nav-link-admin"
+                    onClick={() => setCurrentTab('admin')}
+                    className={`flex items-center space-x-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-150 ${
+                      currentTab === 'admin'
+                        ? 'bg-rose-600 text-white shadow-xs font-bold'
+                        : 'bg-rose-600/10 text-rose-600 hover:bg-rose-600/20 dark:bg-rose-500/10 dark:text-rose-400'
+                    }`}
+                  >
+                    <ShieldAlert className="w-3.5 h-3.5 animate-pulse" />
+                    <span>ড্যাশবোর্ড</span>
+                  </button>
+                )}
+              </nav>
             </div>
           </div>
         </div>
