@@ -21,7 +21,11 @@
     padding: 24px !important; /* matches original padding */
     border: none !important;
     box-shadow: none !important;
-    background: linear-gradient(135deg, #09090b, #1c050c) !important; /* solid background mimicking visual style */
+    background: #ffffff !important; /* clean white background for print mode */
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  #member-identity-card img {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }

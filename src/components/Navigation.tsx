@@ -556,7 +556,7 @@ export default function Navigation({
                 </div>
 
                 {/* SPB Party Affiliation Block (Desktop Only) */}
-                <div className="flex items-center border-l border-zinc-200 dark:border-zinc-800 pl-4 ml-4 py-1 select-none">
+                <div className="hidden xl:flex items-center border-l border-zinc-200 dark:border-zinc-800 pl-4 ml-4 py-1 select-none">
                   <img 
                     src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Flag_of_Socialist_Party_of_Bangladesh.svg/500px-Flag_of_Socialist_Party_of_Bangladesh.svg.png" 
                     alt="বাসদ পতাকা" 
@@ -733,45 +733,62 @@ export default function Navigation({
             </div>
 
             {/* Row 2: Sub-NavBar menu items (With auto-wrap, beautiful gap separation & perfect alignments) */}
-            <div className="border-t border-rose-100 dark:border-zinc-900/80 pt-3">
-              <nav className="flex items-center justify-center flex-wrap gap-x-2 gap-y-2 w-full">
-                {menuItems
-                  .filter((item) => item.visible)
-                  .map((item) => {
-                    const Icon = item.icon;
-                    const isActive = currentTab === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        id={`nav-link-${item.id}`}
-                        onClick={() => setCurrentTab(item.id)}
-                        className={`px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-150 rounded-md flex items-center space-x-1.5 outline-none ${
-                          isActive
-                            ? 'text-rose-600 dark:text-rose-500 bg-rose-50 dark:bg-rose-950/30 border border-rose-150/70 dark:border-rose-900/70 font-bold'
-                            : 'text-zinc-700 dark:text-zinc-300 hover:text-rose-600 dark:hover:text-rose-500 hover:bg-zinc-100 dark:hover:bg-zinc-900'
-                        }`}
-                      >
-                        <Icon className="w-3.5 h-3.5" />
-                        <span>{item.label}</span>
-                      </button>
-                    );
-                  })}
+            <div className="border-t border-rose-100 dark:border-zinc-900/80 pt-3 flex flex-col space-y-2.5">
+              {(() => {
+                const visibleItems = menuItems.filter((item) => item.visible);
+                const half = Math.ceil(visibleItems.length / 2);
+                const row1Items = visibleItems.slice(0, half);
+                const row2Items = visibleItems.slice(half);
 
-                {isAnyAdmin && (
-                  <button
-                    id="nav-link-admin"
-                    onClick={() => setCurrentTab('admin')}
-                    className={`flex items-center space-x-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-150 ${
-                      currentTab === 'admin'
-                        ? 'bg-rose-600 text-white shadow-xs font-bold'
-                        : 'bg-rose-600/10 text-rose-600 hover:bg-rose-600/20 dark:bg-rose-500/10 dark:text-rose-400'
-                    }`}
-                  >
-                    <ShieldAlert className="w-3.5 h-3.5 animate-pulse" />
-                    <span>ড্যাশবোর্ড</span>
-                  </button>
-                )}
-              </nav>
+                const renderItem = (item: typeof menuItems[0]) => {
+                  const Icon = item.icon;
+                  const isActive = currentTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      id={`nav-link-${item.id}`}
+                      onClick={() => setCurrentTab(item.id)}
+                      className={`px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-150 rounded-md flex items-center space-x-1.5 outline-none ${
+                        isActive
+                          ? 'text-rose-600 dark:text-rose-500 bg-rose-50 dark:bg-rose-950/30 border border-rose-150/70 dark:border-rose-900/70 font-bold'
+                          : 'text-zinc-700 dark:text-zinc-300 hover:text-rose-600 dark:hover:text-rose-500 hover:bg-zinc-100 dark:hover:bg-zinc-900'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                };
+
+                return (
+                  <>
+                    {/* Sub-NavBar Row 2a: First half of menu items */}
+                    <nav className="flex items-center justify-center flex-wrap gap-x-4 lg:gap-x-5 xl:gap-x-6 gap-y-2 w-full">
+                      {row1Items.map(renderItem)}
+                    </nav>
+
+                    {/* Sub-NavBar Row 2b: Second half of menu items + Admin Dashboard */}
+                    <nav className="flex items-center justify-center flex-wrap gap-x-4 lg:gap-x-5 xl:gap-x-6 gap-y-2 w-full border-t border-rose-50/50 dark:border-zinc-900/40 pt-2">
+                      {row2Items.map(renderItem)}
+
+                      {isAnyAdmin && (
+                        <button
+                          id="nav-link-admin"
+                          onClick={() => setCurrentTab('admin')}
+                          className={`flex items-center space-x-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-150 ${
+                            currentTab === 'admin'
+                              ? 'bg-rose-600 text-white shadow-xs font-bold'
+                              : 'bg-rose-600/10 text-rose-600 hover:bg-rose-600/20 dark:bg-rose-500/10 dark:text-rose-400'
+                          }`}
+                        >
+                          <ShieldAlert className="w-3.5 h-3.5 animate-pulse" />
+                          <span>ড্যাশবোর্ড</span>
+                        </button>
+                      )}
+                    </nav>
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>

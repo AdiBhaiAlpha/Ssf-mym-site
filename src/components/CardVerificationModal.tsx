@@ -430,12 +430,12 @@ export default function CardVerificationModal({
                     </div>
 
                     {/* Member info card details */}
-                    <div id="member-identity-card" className="bg-zinc-900/80 border border-zinc-850 p-4 rounded-lg relative overflow-hidden flex flex-col sm:flex-row items-center sm:items-start gap-4">
+                    <div id="member-identity-card" className="bg-white border border-zinc-200 p-5 rounded-lg shadow-xl relative overflow-hidden flex flex-col sm:flex-row items-center sm:items-start gap-4 text-zinc-900">
                       {/* background watermarks */}
                       <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-550/5 blur-[50px] rounded-full pointer-events-none" />
 
                       {/* Photo */}
-                      <div className="w-[100px] h-[125px] rounded border border-zinc-800 bg-zinc-950 flex items-center justify-center text-zinc-500 overflow-hidden shadow-inner shrink-0 scale-95 sm:scale-100 leading-none">
+                      <div className="w-[100px] h-[125px] rounded border border-zinc-200 bg-zinc-50 flex items-center justify-center text-zinc-500 overflow-hidden shadow-inner shrink-0 scale-95 sm:scale-100 leading-none">
                         {targetMember.photoUrl ? (
                           <img 
                             src={targetMember.photoUrl} 
@@ -452,7 +452,7 @@ export default function CardVerificationModal({
                       <div className="flex-1 w-full space-y-2 text-xs">
                         <div>
                           <span className="text-[10px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">পূর্ণ নাম / Full Name</span>
-                          <strong className="text-white font-extrabold text-sm block leading-tight mt-0.5">{targetMember.name}</strong>
+                          <strong className="text-zinc-900 font-extrabold text-sm block leading-tight mt-0.5">{targetMember.name}</strong>
                         </div>
 
                         <div>
@@ -465,38 +465,38 @@ export default function CardVerificationModal({
                         <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
                           <div>
                             <span className="text-[9px] text-zinc-500 uppercase tracking-wider block font-bold leading-none">মেম্বারশিপ আইডি</span>
-                            <span className="text-zinc-200 font-bold block bg-zinc-950 px-1.5 py-0.5 rounded border border-zinc-850 w-fit mt-0.5 font-mono">{targetMemberId}</span>
+                            <span className="text-zinc-800 font-bold block bg-zinc-100 px-1.5 py-0.5 rounded border border-zinc-200 w-fit mt-0.5 font-mono">{targetMemberId}</span>
                           </div>
                           <div>
                             <span className="text-[9px] text-zinc-500 uppercase tracking-wider block font-bold leading-none">রক্তের গ্রুপ</span>
-                            <span className="text-white font-bold block mt-1">{targetMember.bloodGroup || 'সংগৃহীত নয়'}</span>
+                            <span className="text-zinc-800 font-bold block mt-1">{targetMember.bloodGroup || 'সংগৃহীত নয়'}</span>
                           </div>
                         </div>
 
                         <div className="pt-0.5">
                           <span className="text-[10px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">জন্ম তারিখ</span>
-                          <span className="text-zinc-200 font-semibold block leading-snug mt-0.5">{targetMember.dob || 'সংগৃহীত নয়'}</span>
+                          <span className="text-zinc-800 font-semibold block leading-snug mt-0.5">{targetMember.dob || 'সংগৃহীত নয়'}</span>
                         </div>
 
                         <div className="pt-0.5">
                           <span className="text-[10px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">শিক্ষা প্রতিষ্ঠান</span>
-                          <span className="text-zinc-200 font-semibold block leading-snug mt-0.5">{targetMember.institution}</span>
+                          <span className="text-zinc-800 font-semibold block leading-snug mt-0.5">{targetMember.institution}</span>
                         </div>
 
                         <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
                           <div>
                             <span className="text-[9px] text-zinc-500 uppercase tracking-wider block font-bold leading-none">মোবাইল নম্বর</span>
-                            <span className="text-zinc-300 block font-mono font-semibold mt-0.5">{targetMember.mobile}</span>
+                            <span className="text-zinc-800 block font-mono font-semibold mt-0.5">{targetMember.mobile}</span>
                           </div>
                           <div>
                             <span className="text-[9px] text-zinc-500 uppercase tracking-wider block font-bold leading-none">শ্রেণি বা বিভাগ</span>
-                            <span className="text-zinc-300 block font-semibold mt-0.5">{targetMember.department || 'N/A'}</span>
+                            <span className="text-zinc-800 block font-semibold mt-0.5">{targetMember.department || 'N/A'}</span>
                           </div>
                         </div>
 
-                        <div className="pt-1.5 border-t border-zinc-850 flex justify-between items-center text-[10px] text-zinc-500 font-mono font-sans z-10">
+                        <div className="pt-1.5 border-t border-zinc-150 flex justify-between items-center text-[10px] text-zinc-500 font-mono font-sans z-10">
                           <span>Verified At:</span>
-                          <span className="text-zinc-400 font-bold">{targetMember.verifiedAt || targetMember.appliedAt}</span>
+                          <span className="text-zinc-700 font-bold">{targetMember.verifiedAt || targetMember.appliedAt}</span>
                         </div>
                       </div>
                     </div>

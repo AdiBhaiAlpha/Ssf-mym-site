@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Award, User, Phone, Mail, MapPin, Calendar, LogOut, CheckCircle2, ShieldCheck, FileText, BookOpen, Clock, Smartphone, Download, Sparkles, Flame, Camera, Link, Check, RefreshCw, Pencil, History, Save, Undo, Eye, X, Heart, Plus, Send } from 'lucide-react';
 import { MemberRegistration, News, Circular, Book, WebSettings, Blog, getMemberBadgeText } from '../types';
 import { motion } from 'motion/react';
@@ -25,6 +25,32 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
   const [photoUrlInput, setPhotoUrlInput] = useState('');
   const [loadingUrl, setLoadingUrl] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [useProxy, setUseProxy] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const isSandbox = window.location.hostname.includes('localhost') || 
+                        window.location.hostname.includes('127.0.0.1') || 
+                        window.location.hostname.includes('run.app');
+      return isSandbox;
+    }
+    return true;
+  });
+
+  useEffect(() => {
+    if (!useProxy) return;
+    const checkApi = async () => {
+      try {
+        const testUrl = 'https://i.ibb.co.com/F4MKM3R2/20260527-055637.png';
+        const res = await fetch(`/api/proxy-image?url=${encodeURIComponent(testUrl)}`, { method: 'HEAD' });
+        const contentType = res.headers.get('content-type') || '';
+        if (!res.ok || contentType.includes('text/html')) {
+          setUseProxy(false);
+        }
+      } catch (e) {
+        setUseProxy(false);
+      }
+    };
+    checkApi();
+  }, [useProxy]);
 
   // Blog submission panel states
   const [showBlogForm, setShowBlogForm] = useState(false);
@@ -177,10 +203,53 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
 
   const getProxiedUrl = (url: string | undefined) => {
     if (!url) return '';
-    if (url.startsWith('https://') || url.startsWith('http://')) {
-      return `/api/proxy-image?url=${encodeURIComponent(url)}`;
-    }
     return url;
+  };
+
+  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    const img = e.currentTarget;
+    const currentSrc = img.src;
+    
+    // If it has crossOrigin/crossorigin, remove it and retry the load
+    if (img.removeAttribute && (img.getAttribute('crossorigin') || img.crossOrigin)) {
+      img.removeAttribute('crossorigin');
+      img.crossOrigin = null;
+      
+      // If it was a proxied URL, try using the raw URL directly without crossorigin
+      if (currentSrc.includes('/api/proxy-image?url=')) {
+        try {
+          const parts = currentSrc.split('/api/proxy-image?url=');
+          if (parts.length > 1) {
+            const rawUrl = decodeURIComponent(parts[1]);
+            if (rawUrl) {
+              img.src = rawUrl;
+              return;
+            }
+          }
+        } catch (err) {
+          console.error('Failed to parse original image URL from proxy:', err);
+        }
+      }
+      
+      // Reset src to trigger reload without crossorigin
+      img.src = currentSrc;
+      return;
+    }
+    
+    // If it is already without crossorigin and was proxied, fallback to raw url
+    if (currentSrc.includes('/api/proxy-image?url=')) {
+      try {
+        const parts = currentSrc.split('/api/proxy-image?url=');
+        if (parts.length > 1) {
+          const rawUrl = decodeURIComponent(parts[1]);
+          if (rawUrl) {
+            img.src = rawUrl;
+          }
+        }
+      } catch (err) {
+        console.error('Failed to parse original image URL:', err);
+      }
+    }
   };
 
   const handleCopy = () => {
@@ -277,19 +346,20 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
         body: formData
       });
       if (!res.ok) {
-        throw new Error('সার্ভারে ছবি আপলোড করা যায়নি। পুনরায় চেষ্টা করুন।');
+        throw new Error('সার্ভারে ছবি আপলোড করা যায়নি। আপনার হোস্টিংয়ে যদি নোড ব্যাকএন্ড সক্রিয় না থাকে, তবে অনুগ্রহ করে ছবির লিংক (URL) ব্যবহার করুন।');
+      }
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('আপনার হোস্টিংয়ে ফাইল আপলোড মডিউলটি সক্রিয় নেই। অনুগ্রহ করে ছবির লিংক (URL) ব্যবহার করে প্রোফাইল ছবি সংরক্ষণ করুন।');
       }
       const data = await res.json();
       if (data && data.url) {
-        // Save to member database
-        const updateRes = await fetch(`/api/memberships/${member.id}/photo`, {
+        // Save to local backend db if running full-stack
+        await fetch(`/api/memberships/${member.id}/photo`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ photoUrl: data.url })
-        });
-        if (!updateRes.ok) {
-          throw new Error('সদস্য প্রোফাইল লিংকের ডাটাবেজ আপডেট ব্যর্থ হয়েছে।');
-        }
+        }).catch(err => console.warn('Non-blocking local photo db update failed:', err));
         
         // Log to edit history
         const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
@@ -330,63 +400,81 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
     if (!photoUrlInput.trim()) return;
     setLoadingUrl(true);
     setUploadError('');
+    
+    const targetUrl = photoUrlInput.trim();
+
     try {
-      const res = await fetch('/api/upload-profile-photo-url', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          imageUrl: photoUrlInput.trim(),
-          userName: member.name
-        })
-      });
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || 'সার্ভারে ছবি ডাউনলোড করা যায়নি। পুনরায় উপযুক্ত লিংক দিয়ে চেষ্টা করুন।');
+      let finalPhotoUrl = targetUrl;
+      
+      if (useProxy) {
+        // Try backend download
+        try {
+          const res = await fetch('/api/upload-profile-photo-url', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              imageUrl: targetUrl,
+              userName: member.name
+            })
+          });
+          
+          if (res.ok) {
+            const contentType = res.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+              const data = await res.json();
+              if (data && data.url) {
+                finalPhotoUrl = data.url;
+                
+                // Also update local Express db.json if running full-stack
+                await fetch(`/api/memberships/${member.id}/photo`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ photoUrl: finalPhotoUrl })
+                }).catch(err => console.warn('Non-blocking local db update failed:', err));
+              }
+            }
+          } else {
+            console.warn('Backend download failed, falling back to direct URL saving');
+          }
+        } catch (backendErr) {
+          console.warn('Backend download error, falling back to direct URL saving', backendErr);
+        }
       }
-      const data = await res.json();
-      if (data && data.url) {
-        // Save to member database
-        const updateRes = await fetch(`/api/memberships/${member.id}/photo`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ photoUrl: data.url })
-        });
-        if (!updateRes.ok) {
-          throw new Error('সদস্য প্রোফাইল লিংকের ডাটাবেজ আপডেট ব্যর্থ হয়েছে।');
-        }
 
-        // Log to edit history
-        const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
-        const editedBy = member.email || 'সদস্য নিজে';
-        const photoChange = {
-          timestamp,
-          editedBy,
-          field: 'প্রোফাইল ছবি / Photo',
-          oldValue: member.photoUrl || 'নাই/None',
-          newValue: data.url
-        };
-        const updatedHistory = [...(member.editHistory || []), photoChange];
-        const updatedMember: MemberRegistration = {
-          ...member,
-          photoUrl: data.url,
-          editHistory: updatedHistory
-        };
+      // Save to Firestore member database
+      const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+      const editedBy = member.email || 'সদস্য নিজে';
+      const photoChange = {
+        timestamp,
+        editedBy,
+        field: 'প্রোফাইল ছবি / Photo',
+        oldValue: member.photoUrl || 'নাই/None',
+        newValue: finalPhotoUrl
+      };
+      const updatedHistory = [...(member.editHistory || []), photoChange];
+      const updatedMember: MemberRegistration = {
+        ...member,
+        photoUrl: finalPhotoUrl,
+        editHistory: updatedHistory
+      };
 
-        if (onUpdateMember) {
-          await onUpdateMember(updatedMember);
+      if (onUpdateMember) {
+        const success = await onUpdateMember(updatedMember);
+        if (!success) {
+          throw new Error('সদস্য প্রোফাইল আপডেট ব্যর্থ হয়েছে।');
         }
+      }
 
-        setPhotoUrlInput('');
-        // Refresh the db context in parents
-        if (onRefresh) {
-          await onRefresh();
-        }
+      setPhotoUrlInput('');
+      // Refresh the db context in parents
+      if (onRefresh) {
+        await onRefresh();
       }
     } catch (err: any) {
       console.error(err);
-      setUploadError(err.message || 'ছবি ডাউনলোড করতে অপ্রত্যাশিত ত্রুটি দেখা দিয়েছে।');
+      setUploadError(err.message || 'ছবিটি সংরক্ষণ করতে অপ্রত্যাশিত ত্রুটি দেখা দিয়েছে।');
     } finally {
       setLoadingUrl(false);
     }
@@ -417,87 +505,60 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
               {getGreetingTime()}, <span className="text-rose-500 font-bold">{member.name}</span>!
             </h1>
             <p className="text-xs sm:text-sm text-zinc-300 max-w-2xl font-sans leading-relaxed flex flex-wrap items-center gap-1.5">
-              <span>সমাজতান্ত্রিক ছাত্র ফ্রন্ট ময়মনসিংহের শিক্ষাবর্ষ ও সাংগঠনিক প্যানেলে যুক্ত হওয়ায় আপনাকে লাল সালাম। সুন্দর, গণতান্ত্রিক ও বৈষম্যহীন শিক্ষাঙ্গন গড়তে আপনার লড়াই আজ থেকে জোরদার হোক। আপনার আইডি কোড:</span>
-              <button
-                onClick={handleCopy}
-                className="text-rose-450 hover:text-white font-mono bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded cursor-pointer transition hover:bg-rose-550/20 flex items-center gap-1"
-                title="ক্লিক করুন কপি করতে"
-              >
-                <span>{memberId}</span>
-                <span className="text-[10px] text-zinc-400 font-sans border-l border-zinc-700/60 pl-2">
-                  {copied ? 'কপি হয়েছে' : 'কপি করুন'}
-                </span>
-                {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Smartphone className="w-3 h-3 text-rose-400" />}
-              </button>
+              <span>সমাজতান্ত্রিক ছাত্র ফ্রন্ট ময়মনসিংহ জেলা শাখার অফিশিয়াল পোর্টালে আপনাকে স্বাগত।</span>
             </p>
-          </div>
-
-          <div className="flex items-center gap-3 shrink-0">
-            <button
-              onClick={onLogout}
-              className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 hover:text-rose-450 font-bold text-xs text-zinc-200 border border-zinc-700/60 rounded flex items-center gap-1.5 transition duration-150 cursor-pointer select-none shadow-md hover:border-rose-900/40"
-            >
-              <LogOut className="w-4 h-4 text-zinc-400" />
-              <span>লগআউট সেশন</span>
-            </button>
           </div>
         </div>
       </div>
 
-      {/* Grid: 2 Columns */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        
-        {/* Left Column: Digital Member ID Card (5/12) */}
+        {/* Left Column - Card visual and details */}
         <div className="lg:col-span-5 space-y-6">
-          <div className="border-b border-zinc-200 dark:border-zinc-800 pb-2">
-            <h2 className="text-sm font-extrabold text-zinc-950 dark:text-white flex items-center gap-2">
-              <Award className="text-rose-600 w-5 h-5 shrink-0" />
-              <span>সদস্য কার্ড (E-Identity)</span>
-            </h2>
-            <p className="text-[10px] text-zinc-450 dark:text-zinc-500 mt-0.5">
-              কার্ডটি PDF বা PNG নথিতে ডাউনলোড করতে নিচের সংশ্লিষ্ট বাটনসমূহে ক্লিক করুন।
-            </p>
-          </div>
-
           {/* Printable Visual Card wrapper - explicitly targeted with id */}
           <div className="print:p-0">
-            <div id="member-identity-card" className="bg-gradient-to-br from-zinc-950 to-rose-950 p-[1.5px] rounded-lg shadow-2xl overflow-hidden relative group">
-              <div className="bg-zinc-950 p-6 relative flex flex-col justify-between min-h-[350px]">
+            <div id="member-identity-card" className="bg-gradient-to-br from-zinc-200 to-rose-200 p-[1.5px] rounded-lg shadow-2xl overflow-hidden relative group">
+              <div className="bg-white p-6 relative flex flex-col justify-between min-h-[350px]">
                 
                 {/* Background watermarks */}
-                <div className="absolute top-0 right-0 w-44 h-44 bg-rose-500/10 blur-[80px] rounded-full pointer-events-none" />
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-44 h-44 rounded-full border border-dashed border-rose-600/10 flex items-center justify-center pointer-events-none select-none">
+                <div className="absolute top-0 right-0 w-44 h-44 bg-rose-500/5 blur-[80px] rounded-full pointer-events-none" />
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-44 h-44 rounded-full border border-dashed border-rose-600/15 flex items-center justify-center pointer-events-none select-none">
                   <img
                     src={getProxiedUrl('https://i.ibb.co.com/F4MKM3R2/20260527-055637.png')}
                     alt="Watermark Logo"
-                    className="w-28 h-28 object-contain opacity-[0.05] brightness-75"
+                    className="w-28 h-28 object-contain opacity-[0.06] saturate-125"
                     referrerPolicy="no-referrer"
+                    crossOrigin="anonymous"
+                    onError={handleImageError}
                   />
                 </div>
 
                 {/* ID Header */}
-                <div className="flex items-center justify-between border-b border-zinc-900 pb-3 relative">
+                <div className="flex items-center justify-between border-b border-zinc-200 pb-3 relative">
                   <div className="flex items-center gap-3">
                     <img
                       src={getProxiedUrl('https://i.ibb.co.com/F4MKM3R2/20260527-055637.png')}
                       alt="সমাজতান্ত্রিক ছাত্র ফ্রন্ট লোগো"
-                      className="h-10 w-10 object-contain brightness-110"
+                      className="h-10 w-10 object-contain"
                       referrerPolicy="no-referrer"
+                      crossOrigin="anonymous"
+                      onError={handleImageError}
                     />
                     <div className="flex flex-col">
                       <img
                         src={getProxiedUrl('https://i.ibb.co/R4BCPZ0B/20250130-143124.png')}
                         alt="সমাজতান্ত্রিক ছাত্র ফ্রন্ট"
-                        className="h-8.5 sm:h-9 w-auto object-contain brightness-150 saturate-125 contrast-125 drop-shadow-[0_0_10px_rgba(239,68,68,0.4)]"
+                        className="h-8.5 sm:h-9 w-auto object-contain saturate-125 contrast-125"
                         referrerPolicy="no-referrer"
+                        crossOrigin="anonymous"
+                        onError={handleImageError}
                       />
-                      <p className="text-[8px] text-zinc-400 font-mono tracking-widest mt-0.5">
+                      <p className="text-[8px] text-zinc-500 font-mono tracking-widest mt-0.5">
                         MYMENSINGH DISTRICT
                       </p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="bg-rose-900/60 text-white font-sans text-[9px] font-extrabold border border-rose-700/50 px-2 py-0.5 rounded shadow-xs select-none uppercase tracking-wide">
+                    <span className="bg-rose-100 text-rose-700 font-sans text-[9px] font-extrabold border border-rose-200 px-2 py-0.5 rounded shadow-xs select-none uppercase tracking-wide">
                       {getMemberBadgeText(member)}
                     </span>
                   </div>
@@ -507,18 +568,19 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
                 <div className="grid grid-cols-12 gap-3.5 my-4 items-start relative">
                   {/* Photo area with fallback User icon or actual path */}
                   <div className="col-span-3 flex flex-col items-center justify-start pt-1.5">
-                    <div className="w-[88px] h-[110px] rounded border border-zinc-800 bg-zinc-900 flex flex-col items-center justify-center text-rose-500 relative overflow-hidden shadow-inner shrink-0">
+                    <div className="w-[88px] h-[110px] rounded border border-zinc-200 bg-zinc-50 flex flex-col items-center justify-center text-rose-600 relative overflow-hidden shadow-sm shrink-0">
                       {member.photoUrl ? (
                         <img 
                           src={getProxiedUrl(member.photoUrl)} 
                           alt={member.name} 
                           className="w-full h-full object-cover" 
                           referrerPolicy="no-referrer"
+                          onError={handleImageError}
                         />
                       ) : (
                         <>
-                          <User className="w-8 h-8 opacity-40 text-rose-500" />
-                          <div className="absolute bottom-0 inset-x-0 bg-rose-600/20 text-[7px] py-[1.5px] text-center font-bold tracking-wider uppercase font-mono">
+                          <User className="w-8 h-8 opacity-40 text-rose-600" />
+                          <div className="absolute bottom-0 inset-x-0 bg-rose-600 text-white text-[7px] py-[1.5px] text-center font-bold tracking-wider uppercase font-mono">
                             APPROVED
                           </div>
                         </>
@@ -531,39 +593,39 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
                     <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
                       <div className="col-span-2">
                         <span className="text-[7.5px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">নাম / Full Name</span>
-                        <strong className="text-[12px] font-bold text-white tracking-wide block leading-snug mt-0.5">{member.name}</strong>
+                        <strong className="text-[12px] font-bold text-zinc-900 tracking-wide block leading-snug mt-0.5">{member.name}</strong>
                       </div>
 
                       <div>
                         <span className="text-[7.5px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">শ্রেণি / Class</span>
-                        <span className="text-[10px] text-zinc-200 font-bold block truncate leading-tight mt-0.5">{member.department || 'সদস্য'}</span>
+                        <span className="text-[10px] text-zinc-800 font-bold block truncate leading-tight mt-0.5">{member.department || 'সদস্য'}</span>
                       </div>
 
                       <div>
                         <span className="text-[7.5px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">রক্তের গ্রুপ / Blood</span>
-                        <span className="text-[10px] text-white font-bold block leading-tight mt-0.5">{member.bloodGroup || 'N/A'}</span>
+                        <span className="text-[10px] text-zinc-900 font-bold block leading-tight mt-0.5">{member.bloodGroup || 'N/A'}</span>
                       </div>
 
                       <div className="col-span-2">
                         <span className="text-[7.5px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">শিক্ষা প্রতিষ্ঠান / Institution</span>
-                        <span className="text-[10.5px] text-zinc-200 font-semibold block truncate leading-tight mt-0.5">{member.institution}</span>
+                        <span className="text-[10.5px] text-zinc-800 font-semibold block truncate leading-tight mt-0.5">{member.institution}</span>
                       </div>
 
                       <div className="col-span-2">
                         <span className="text-[7.5px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">মোবাইল / Mobile No</span>
-                        <span className="text-[10px] font-mono text-zinc-300 font-bold block leading-tight mt-0.5">{member.mobile}</span>
+                        <span className="text-[10px] font-mono text-zinc-800 font-bold block leading-tight mt-0.5">{member.mobile}</span>
                       </div>
 
                       <div className="col-span-2">
                         <span className="text-[7.5px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">ঠিকানা / Address</span>
-                        <span className="text-[9.5px] text-zinc-350 block leading-tight truncate mt-0.5">{member.address}</span>
+                        <span className="text-[9.5px] text-zinc-700 block leading-tight truncate mt-0.5">{member.address}</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Card Footer info */}
-                <div className="flex items-end justify-between pt-3 border-t border-zinc-900 mt-2 text-zinc-500 text-[9px] relative font-sans">
+                <div className="flex items-end justify-between pt-3 border-t border-zinc-200 mt-2 text-zinc-500 text-[9px] relative font-sans">
                   
                   {/* Left Block: Code & Issue Date */}
                   <div className="space-y-1.5 text-left flex-1 min-w-0 pr-2">
@@ -571,16 +633,16 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
                       <div className="print:hidden">
                         <button 
                           onClick={handleCopy}
-                          className="font-mono text-left cursor-pointer hover:text-rose-450 transition active:scale-95 group/code block"
+                          className="font-mono text-left cursor-pointer hover:text-rose-600 transition active:scale-95 group/code block"
                           title="ক্লিক করুন কপি করতে"
                         >
-                          <span className="text-[7.5px] text-zinc-550 group-hover/code:text-rose-500 uppercase tracking-widest block font-sans transition leading-none">মেম্বারশিপ কোড (ক্লিক করে কপি করুন)</span>
-                          <strong className="text-zinc-200 group-hover/code:text-white text-[10px] font-bold tracking-wider block transition leading-tight mt-0.5">{memberId}</strong>
+                          <span className="text-[7.5px] text-zinc-500 group-hover/code:text-rose-600 uppercase tracking-widest block font-sans transition leading-none">মেম্বারশিপ কোড (ক্লিক করে কপি করুন)</span>
+                          <strong className="text-zinc-850 group-hover/code:text-zinc-950 text-[10px] font-bold tracking-wider block transition leading-tight mt-0.5">{memberId}</strong>
                         </button>
                         
                         <div className="mt-1.5">
-                          <span className="text-[7.5px] text-zinc-550 uppercase tracking-wider block font-sans leading-none">ইস্যু ডেট</span>
-                          <strong className="text-zinc-350 block font-mono font-bold text-[9px] leading-tight mt-0.5">{member.verifiedAt || member.appliedAt}</strong>
+                          <span className="text-[7.5px] text-zinc-500 uppercase tracking-wider block font-sans leading-none">ইস্যু ডেট</span>
+                          <strong className="text-zinc-700 block font-mono font-bold text-[9px] leading-tight mt-0.5">{member.verifiedAt || member.appliedAt}</strong>
                         </div>
                       </div>
                     ) : null}
@@ -588,44 +650,46 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
                     {/* QR Code and verification tag during export (html2canvas) */}
                     {isExporting && (
                       <div className="flex flex-col items-start space-y-1">
-                        <span className="text-[7px] text-zinc-400 uppercase tracking-widest font-extrabold leading-none">Validate this card</span>
+                        <span className="text-[7px] text-zinc-500 uppercase tracking-widest font-extrabold leading-none">Validate this card</span>
                         <img 
                           src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`${window.location.protocol}//${window.location.host}/?verify-member=${member.id}`)}`}
                           alt="Verification QR Code"
-                          className="w-11 h-11 object-contain rounded bg-white p-[1px] border border-zinc-850"
+                          className="w-11 h-11 object-contain rounded bg-white p-[1px] border border-zinc-200"
                         />
                       </div>
                     )}
 
                     {/* QR Code and verification tag during native print */}
                     <div className="hidden print:flex flex-col items-start space-y-1">
-                      <span className="text-[7px] text-zinc-400 uppercase tracking-widest font-extrabold leading-none">Validate this card</span>
+                      <span className="text-[7px] text-zinc-500 uppercase tracking-widest font-extrabold leading-none">Validate this card</span>
                       <img 
                         src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`${window.location.protocol}//${window.location.host}/?verify-member=${member.id}`)}`}
                         alt="Verification QR Code"
-                        className="w-11 h-11 object-contain rounded bg-white p-[1px] border border-zinc-850"
+                        className="w-11 h-11 object-contain rounded bg-white p-[1px] border border-zinc-200"
                       />
                     </div>
                   </div>
 
                   {/* Right Block: Signer Config */}
                   <div className="text-center w-44 shrink-0 flex flex-col items-center justify-end relative">
-                    <span className="text-[7.5px] font-sans text-rose-500/70 uppercase tracking-wider block font-bold leading-none mb-1">ইস্যুকারীর স্বাক্ষর</span>
+                    <span className="text-[7.5px] font-sans text-rose-600 uppercase tracking-wider block font-bold leading-none mb-1">ইস্যুকারীর স্বাক্ষর</span>
                     <div className="h-8 relative flex items-center justify-center w-full">
                       {settings?.idSignerSignatureUrl ? (
                         <img 
                           src={getProxiedUrl(settings.idSignerSignatureUrl)} 
                           alt="Signature" 
-                          className="h-7.5 max-w-[125px] object-contain brightness-125 select-none"
+                          className="h-7.5 max-w-[125px] object-contain select-none"
                           referrerPolicy="no-referrer"
+                          crossOrigin="anonymous"
+                          onError={handleImageError}
                         />
                       ) : (
-                        <div className="h-7 border-b border-dashed border-zinc-800/80 w-24 mb-0.5" />
+                        <div className="h-7 border-b border-dashed border-zinc-300 w-24 mb-0.5" />
                       )}
                     </div>
-                    <div className="border-t border-zinc-900/60 pt-1 w-full flex flex-col items-center select-none">
-                      <span className="text-[9px] text-zinc-250 font-extrabold block tracking-wide truncate max-w-full leading-tight">{settings?.idSignerName || 'তানজিল হোসেন মুণিম'}</span>
-                      <span className="text-[7.5px] text-zinc-450 block truncate max-w-full leading-none mt-0.5">{settings?.idSignerRoleLine1 || 'সভাপতি'}</span>
+                    <div className="border-t border-zinc-200 pt-1 w-full flex flex-col items-center select-none">
+                      <span className="text-[9px] text-zinc-900 font-extrabold block tracking-wide truncate max-w-full leading-tight">{settings?.idSignerName || 'তানজিল হোসেন মুণিম'}</span>
+                      <span className="text-[7.5px] text-zinc-700 block truncate max-w-full leading-none mt-0.5">{settings?.idSignerRoleLine1 || 'সভাপতি'}</span>
                       <span className="text-[7px] text-zinc-550 block truncate max-w-full leading-none mt-0.5">{settings?.idSignerRoleLine2 || 'সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা'}</span>
                     </div>
                   </div>

@@ -90,6 +90,10 @@ function FileUploader({ label, value, onChange, accept = "*/*", placeholder = "�
         body: formData
       });
       if (!res.ok) throw new Error('ফাইল আপলোড ব্যর্থ হয়েছে।');
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('আপনার হোস্টিং সার্ভারে ফাইল আপলোড মডিউলটি সক্রিয় নেই। অনুগ্রহ করে সরাসরি ছবির লিংক (URL) ইনপুট বক্সে লিখে সংরক্ষণ করুন।');
+      }
       const data = await res.json();
       onChange(data.url);
     } catch (err: any) {
