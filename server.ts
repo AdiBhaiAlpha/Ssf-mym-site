@@ -288,7 +288,7 @@ async function startServer() {
     res.json(db);
   });
 
-  // Dynamic robots.txt
+  // Dynamic robots.txt with both sitemap and sitemap-index declarations
   app.get('/robots.txt', (req, res) => {
     const proto = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
     const host = req.headers.host;
@@ -298,7 +298,269 @@ Allow: /
 Disallow: /api/
 Disallow: /admin
 
+Sitemap: ${proto}://${host}/sitemap-index.xml
 Sitemap: ${proto}://${host}/sitemap.xml`);
+  });
+
+  // Helper types and functions for sitemap architecture
+  interface SitemapUrl {
+    loc: string;
+    lastmod?: string;
+    changefreq: 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never';
+    priority: string;
+  }
+
+  function getAllSitemapUrls(baseUrl: string, db: AppDatabase): SitemapUrl[] {
+    const urls: SitemapUrl[] = [];
+    const today = new Date().toISOString().split('T')[0];
+
+    // 1. Static and Tab routes (clean paths & backward compatible queries)
+    const tabs = ['home', 'news', 'books', 'events', 'circulars', 'about', 'join', 'portal', 'media', 'contact'];
+    const tabNamesMap: Record<string, string> = {
+      home: '/',
+      about: '/about',
+      contact: '/contact',
+      join: '/join',
+      news: '/news',
+      books: '/books',
+      events: '/events',
+      circulars: '/circulars',
+      media: '/media',
+      portal: '/portal'
+    };
+
+    Object.entries(tabNamesMap).forEach(([tab, path]) => {
+      // Clean path
+      urls.push({
+        loc: `${baseUrl}${path}`,
+        changefreq: 'daily',
+        priority: tab === 'home' ? '1.0' : '0.8',
+        lastmod: today
+      });
+      // Query path for full backwards compatibility
+      urls.push({
+        loc: `${baseUrl}/?tab=${tab}`,
+        changefreq: 'daily',
+        priority: tab === 'home' ? '0.9' : '0.7',
+        lastmod: today
+      });
+    });
+
+    // Extra required SEO static routes
+    const extraStatic = ['/privacy-policy', '/terms', '/blog'];
+    extraStatic.forEach(p => {
+      urls.push({
+        loc: `${baseUrl}${p}`,
+        changefreq: 'monthly',
+        priority: '0.5',
+        lastmod: today
+      });
+    });
+
+    // 2. News Articles (clean paths and query URLs)
+    if (db.news && Array.isArray(db.news)) {
+      db.news.forEach(item => {
+        const dateStr = item.date ? new Date(item.date).toISOString().split('T')[0] : today;
+        urls.push({
+          loc: `${baseUrl}/news/${item.id}`,
+          changefreq: 'weekly',
+          priority: '0.7',
+          lastmod: dateStr
+        });
+        urls.push({
+          loc: `${baseUrl}/post/${item.id}`,
+          changefreq: 'weekly',
+          priority: '0.7',
+          lastmod: dateStr
+        });
+        urls.push({
+          loc: `${baseUrl}/?tab=news&amp;newsId=${item.id}`,
+          changefreq: 'weekly',
+          priority: '0.6',
+          lastmod: dateStr
+        });
+      });
+    }
+
+    // 3. Blog Posts (clean paths and query URLs)
+    if (db.blogs && Array.isArray(db.blogs)) {
+      db.blogs.forEach(item => {
+        const dateStr = item.date ? new Date(item.date).toISOString().split('T')[0] : today;
+        urls.push({
+          loc: `${baseUrl}/blog/${item.id}`,
+          changefreq: 'weekly',
+          priority: '0.7',
+          lastmod: dateStr
+        });
+        urls.push({
+          loc: `${baseUrl}/post/${item.id}`,
+          changefreq: 'weekly',
+          priority: '0.7',
+          lastmod: dateStr
+        });
+        urls.push({
+          loc: `${baseUrl}/?tab=news&amp;blogId=${item.id}`,
+          changefreq: 'weekly',
+          priority: '0.6',
+          lastmod: dateStr
+        });
+      });
+    }
+
+    // 4. Events (clean paths and query URLs)
+    if (db.events && Array.isArray(db.events)) {
+      db.events.forEach(item => {
+        const dateStr = item.date ? new Date(item.date).toISOString().split('T')[0] : today;
+        urls.push({
+          loc: `${baseUrl}/event/${item.id}`,
+          changefreq: 'weekly',
+          priority: '0.6',
+          lastmod: dateStr
+        });
+        urls.push({
+          loc: `${baseUrl}/?tab=events&amp;eventId=${item.id}`,
+          changefreq: 'weekly',
+          priority: '0.5',
+          lastmod: dateStr
+        });
+      });
+    }
+
+    // 5. Books (clean paths and query URLs)
+    if (db.books && Array.isArray(db.books)) {
+      db.books.forEach(item => {
+        urls.push({
+          loc: `${baseUrl}/book/${item.id}`,
+          changefreq: 'monthly',
+          priority: '0.6',
+          lastmod: today
+        });
+        urls.push({
+          loc: `${baseUrl}/?tab=books&amp;bookId=${item.id}`,
+          changefreq: 'monthly',
+          priority: '0.5',
+          lastmod: today
+        });
+      });
+    }
+
+    // 6. Categories, Tags, and Authors
+    const categories = new Set<string>();
+    const tags = new Set<string>();
+    const authors = new Set<string>();
+
+    const scanContent = (items: any[]) => {
+      if (!Array.isArray(items)) return;
+      items.forEach(item => {
+        if (item.category) categories.add(item.category.trim());
+        if (item.tags && Array.isArray(item.tags)) {
+          item.tags.forEach((t: string) => {
+            if (t && typeof t === 'string') tags.add(t.trim());
+          });
+        }
+        if (item.author) authors.add(item.author.trim());
+      });
+    };
+
+    scanContent(db.news || []);
+    scanContent(db.blogs || []);
+
+    categories.forEach(cat => {
+      urls.push({
+        loc: `${baseUrl}/category/${encodeURIComponent(cat.toLowerCase())}`,
+        changefreq: 'weekly',
+        priority: '0.5',
+        lastmod: today
+      });
+    });
+
+    tags.forEach(tag => {
+      urls.push({
+        loc: `${baseUrl}/tag/${encodeURIComponent(tag.toLowerCase())}`,
+        changefreq: 'weekly',
+        priority: '0.5',
+        lastmod: today
+      });
+    });
+
+    authors.forEach(author => {
+      urls.push({
+        loc: `${baseUrl}/author/${encodeURIComponent(author.toLowerCase())}`,
+        changefreq: 'weekly',
+        priority: '0.5',
+        lastmod: today
+      });
+    });
+
+    // Safeguard duplication mapping
+    const seen = new Set<string>();
+    const uniqueUrls: SitemapUrl[] = [];
+    urls.forEach(u => {
+      const canonicalLoc = u.loc.toLowerCase().trim();
+      if (!seen.has(canonicalLoc)) {
+        seen.add(canonicalLoc);
+        uniqueUrls.push(u);
+      }
+    });
+
+    return uniqueUrls;
+  }
+
+  function buildUrlSetXml(urls: SitemapUrl[]): string {
+    let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`;
+    urls.forEach(u => {
+      xml += `
+  <url>
+    <loc>${u.loc}</loc>`;
+      if (u.lastmod) {
+        xml += `
+    <lastmod>${u.lastmod}</lastmod>`;
+      }
+      xml += `
+    <changefreq>${u.changefreq}</changefreq>
+    <priority>${u.priority}</priority>
+  </url>`;
+    });
+    xml += `
+</urlset>`;
+    return xml;
+  }
+
+  function buildSitemapIndexXml(baseUrl: string, totalCount: number, limit: number): string {
+    const partsCount = Math.ceil(totalCount / limit);
+    let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`;
+    for (let i = 1; i <= partsCount; i++) {
+      xml += `
+  <sitemap>
+    <loc>${baseUrl}/sitemap-${i}.xml</loc>
+    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
+  </sitemap>`;
+    }
+    xml += `
+</sitemapindex>`;
+    return xml;
+  }
+
+  // Dynamic sitemapindex router
+  app.get('/sitemap-index.xml', (req, res) => {
+    const proto = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+    const host = req.headers.host;
+    const baseUrl = `${proto}://${host}`;
+
+    let db: AppDatabase;
+    try {
+      db = loadDatabase();
+    } catch (e) {
+      db = getInitialDBState();
+    }
+
+    const allUrls = getAllSitemapUrls(baseUrl, db);
+    const xml = buildSitemapIndexXml(baseUrl, allUrls.length, 500);
+
+    res.type('application/xml');
+    res.send(xml);
   });
 
   // Dynamic sitemap.xml
@@ -314,74 +576,50 @@ Sitemap: ${proto}://${host}/sitemap.xml`);
       db = getInitialDBState();
     }
 
-    const tabs = ['home', 'news', 'books', 'events', 'circulars', 'about', 'join', 'portal', 'media', 'contact'];
-    
-    let xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`;
+    const allUrls = getAllSitemapUrls(baseUrl, db);
 
-    // 1. Add static/tab routes
-    tabs.forEach(tab => {
-      xml += `
-  <url>
-    <loc>${baseUrl}/?tab=${tab}</loc>
-    <changefreq>daily</changefreq>
-    <priority>${tab === 'home' ? '1.0' : '0.8'}</priority>
-  </url>`;
-    });
-
-    // 2. Add News articles
-    if (db.news && Array.isArray(db.news)) {
-      db.news.forEach(item => {
-        xml += `
-  <url>
-    <loc>${baseUrl}/?tab=news&amp;newsId=${item.id}</loc>
-    <lastmod>${item.date ? new Date(item.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
-  </url>`;
-      });
+    // If website exceeds 500 URLs, split them up and point to the sitemap index
+    if (allUrls.length > 500) {
+      const xml = buildSitemapIndexXml(baseUrl, allUrls.length, 500);
+      res.type('application/xml');
+      return res.send(xml);
     }
 
-    // 3. Add Blog posts
-    if (db.blogs && Array.isArray(db.blogs)) {
-      db.blogs.forEach(item => {
-        xml += `
-  <url>
-    <loc>${baseUrl}/?tab=news&amp;blogId=${item.id}</loc>
-    <lastmod>${item.date ? new Date(item.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
-  </url>`;
-      });
+    // Otherwise, serve all directly in one sitemap.xml
+    const xml = buildUrlSetXml(allUrls);
+    res.type('application/xml');
+    res.send(xml);
+  });
+
+  // Dynamic sitemap part files (e.g. sitemap-1.xml, sitemap-2.xml)
+  app.get('/sitemap-:part.xml', (req, res) => {
+    const proto = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+    const host = req.headers.host;
+    const baseUrl = `${proto}://${host}`;
+    const part = parseInt(req.params.part, 10);
+
+    if (isNaN(part) || part < 1) {
+      return res.status(404).send('Not Found');
     }
 
-    // 4. Add Events
-    if (db.events && Array.isArray(db.events)) {
-      db.events.forEach(item => {
-        xml += `
-  <url>
-    <loc>${baseUrl}/?tab=events&amp;eventId=${item.id}</loc>
-    <lastmod>${item.date ? new Date(item.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.6</priority>
-  </url>`;
-      });
+    let db: AppDatabase;
+    try {
+      db = loadDatabase();
+    } catch (e) {
+      db = getInitialDBState();
     }
 
-    // 5. Add Books/Publications
-    if (db.books && Array.isArray(db.books)) {
-      db.books.forEach(item => {
-        xml += `
-  <url>
-    <loc>${baseUrl}/?tab=books&amp;bookId=${item.id}</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
-  </url>`;
-      });
+    const allUrls = getAllSitemapUrls(baseUrl, db);
+    const limit = 500;
+    const startIndex = (part - 1) * limit;
+    const endIndex = startIndex + limit;
+
+    if (startIndex >= allUrls.length) {
+      return res.status(404).send('No such sitemap part');
     }
 
-    xml += `
-</urlset>`;
+    const partUrls = allUrls.slice(startIndex, endIndex);
+    const xml = buildUrlSetXml(partUrls);
 
     res.type('application/xml');
     res.send(xml);

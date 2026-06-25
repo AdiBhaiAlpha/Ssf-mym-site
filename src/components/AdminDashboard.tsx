@@ -443,6 +443,67 @@ export default function AdminDashboard({
     }
   };
 
+  const handleApprovePasswordReset = async (member: MemberRegistration) => {
+    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const editedBy = userEmail || 'এডমিন';
+
+    const changes = [
+      {
+        timestamp,
+        editedBy,
+        field: 'পাসওয়ার্ড রিসেট',
+        oldValue: member.resetApproved ? 'অনুমোদিত' : (member.resetRequested ? 'অনুরোধকৃত' : 'নাই'),
+        newValue: 'অনুমোদিত'
+      }
+    ];
+
+    const memberIdCode = `SSF-MYM-${member.id.substring(member.id.length - 5).toUpperCase()}`;
+
+    const updatedMember: MemberRegistration = {
+      ...member,
+      password: memberIdCode,
+      resetRequested: false,
+      resetApproved: true,
+      editHistory: [...(member.editHistory || []), ...changes]
+    };
+
+    if (onUpdateMember) {
+      const ok = await onUpdateMember(updatedMember);
+      if (!ok) {
+        alert('ডাটাবেজ আপডেট করতে সমস্যা হয়েছে।');
+      }
+    }
+  };
+
+  const handleCancelPasswordReset = async (member: MemberRegistration) => {
+    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const editedBy = userEmail || 'এডমিন';
+
+    const changes = [
+      {
+        timestamp,
+        editedBy,
+        field: 'পাসওয়ার্ড রিসেট',
+        oldValue: member.resetApproved ? 'অনুমোদিত' : (member.resetRequested ? 'অনুরোধকৃত' : 'নাই'),
+        newValue: 'বাতিলকৃত'
+      }
+    ];
+
+    const updatedMember: MemberRegistration = {
+      ...member,
+      resetRequested: false,
+      resetApproved: false,
+      editHistory: [...(member.editHistory || []), ...changes]
+    };
+
+    if (onUpdateMember) {
+      const ok = await onUpdateMember(updatedMember);
+      if (!ok) {
+        alert('ডাটাবেজ আপডেট করতে সমস্যা হয়েছে।');
+      }
+    }
+  };
+
   // Modal Control States
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingItem, setEditingItem] = useState<any | null>(null);
@@ -475,7 +536,7 @@ export default function AdminDashboard({
   // General Status logs
   const [submitting, setSubmitting] = useState(false);
   const [actionSuccess, setActionSuccess] = useState(false);
-  const [membersFilter, setMembersFilter] = useState<'pending' | 'verified' | 'rejected'>('pending');
+  const [membersFilter, setMembersFilter] = useState<'pending' | 'verified' | 'rejected' | 'reset_requests'>('pending');
 
   const userAdminInvite = (db as any).invitations?.find(
     (i: any) => i.email.toLowerCase() === userEmail?.toLowerCase() && i.status === 'accepted'
@@ -2941,12 +3002,28 @@ export default function AdminDashboard({
                       {db.memberships.filter(m => m.status === 'rejected').length}
                     </span>
                   </button>
+
+                  <button
+                    onClick={() => setMembersFilter('reset_requests')}
+                    className={`px-3 py-1.5 rounded text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      membersFilter === 'reset_requests'
+                        ? 'bg-amber-600 text-white shadow-xs animate-pulse'
+                        : 'text-zinc-650 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white bg-amber-50/50 dark:bg-amber-950/10'
+                    }`}
+                  >
+                    <span>পাসওয়ার্ড রিসেট আবেদন</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${membersFilter === 'reset_requests' ? 'bg-black/20 text-white' : 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400 font-bold'}`}>
+                      {db.memberships.filter(m => m.resetRequested).length}
+                    </span>
+                  </button>
                 </div>
               </div>
               
               <div className="space-y-4">
-                {db.memberships
-                  .filter((m) => m.status === membersFilter)
+                {(membersFilter === 'reset_requests'
+                  ? db.memberships.filter((m) => m.resetRequested)
+                  : db.memberships.filter((m) => m.status === membersFilter)
+                )
                   .map((member) => (
                     <div key={member.id} className="p-5 border rounded-sm bg-zinc-50 dark:bg-zinc-900 w-full relative border-zinc-200 dark:border-zinc-800">
                       <span className={`absolute top-4 right-4 text-[9px] uppercase font-mono tracking-wider font-bold px-1.5 py-0.5 rounded ${
@@ -3116,6 +3193,22 @@ export default function AdminDashboard({
                             অনুমোদন বাতিল করুন
                           </button>
                         )}
+                        {member.resetRequested && (
+                          <>
+                            <button
+                              onClick={() => handleApprovePasswordReset(member)}
+                              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs font-bold cursor-pointer"
+                            >
+                              পাসওয়ার্ড রিসেট অনুমোদন করুন
+                            </button>
+                            <button
+                              onClick={() => handleCancelPasswordReset(member)}
+                              className="px-3 py-1.5 bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded text-xs font-bold cursor-pointer"
+                            >
+                              আবেদন বাতিল করুন
+                            </button>
+                          </>
+                        )}
                         {deleteConfirm?.id === member.id && deleteConfirm?.type === 'member' ? (
                           <div className="flex items-center gap-1 bg-rose-50 dark:bg-rose-955 px-2 py-1 border border-rose-250 dark:border-rose-900 rounded-xs">
                             <button onClick={() => { onDeleteMember(member.id); setDeleteConfirm(null); }} className="px-2 py-1 text-[10px] bg-rose-600 text-white rounded-xs font-bold cursor-pointer">হ্যাঁ</button>
@@ -3133,8 +3226,11 @@ export default function AdminDashboard({
                     </div>
                   ))}
 
-                {db.memberships.filter((m) => m.status === membersFilter).length === 0 && (
-                  <p className="text-xs text-zinc-400 italic py-6">কোনো সদস্য বা আবেদনপত্র পাওয়া যায়নি।</p>
+                {((membersFilter === 'reset_requests'
+                  ? db.memberships.filter((m) => m.resetRequested)
+                  : db.memberships.filter((m) => m.status === membersFilter)
+                ).length === 0) && (
+                  <p className="text-xs text-zinc-400 italic py-6">কোনো সদস্য বা পাসওয়ার্ড রিসেট আবেদন পাওয়া যায়নি।</p>
                 )}
               </div>
             </div>

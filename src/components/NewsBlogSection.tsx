@@ -72,10 +72,10 @@ export default function NewsBlogSection({
   useEffect(() => {
     if (selectedNews) {
       const cleanDesc = selectedNews.excerpt || (selectedNews.content ? selectedNews.content.slice(0, 150) + '...' : '');
-      const uniqueUrl = `${window.location.origin}${window.location.pathname}?tab=news&newsId=${selectedNews.id}`;
+      const uniqueUrl = `${window.location.origin}/post/${selectedNews.id}`;
       
-      // Sync address bar URL for sharing
-      window.history.replaceState(null, '', uniqueUrl);
+      // Sync address bar URL for sharing to clean path /post/:id
+      window.history.replaceState(null, '', `/post/${selectedNews.id}`);
 
       const articleSchema = {
         "@context": "https://schema.org",
@@ -108,10 +108,10 @@ export default function NewsBlogSection({
       });
     } else if (selectedBlog) {
       const cleanDesc = selectedBlog.excerpt || (selectedBlog.content ? selectedBlog.content.slice(0, 150) + '...' : '');
-      const uniqueUrl = `${window.location.origin}${window.location.pathname}?tab=news&blogId=${selectedBlog.id}`;
+      const uniqueUrl = `${window.location.origin}/post/${selectedBlog.id}`;
 
-      // Sync address bar URL for sharing
-      window.history.replaceState(null, '', uniqueUrl);
+      // Sync address bar URL for sharing to clean path /post/:id
+      window.history.replaceState(null, '', `/post/${selectedBlog.id}`);
 
       const blogSchema = {
         "@context": "https://schema.org",
@@ -143,9 +143,15 @@ export default function NewsBlogSection({
         schema: blogSchema
       });
     } else {
-      // Revert address bar back to base news tab
-      const baseUrl = `${window.location.origin}${window.location.pathname}?tab=news`;
-      window.history.replaceState(null, '', baseUrl);
+      // Check if we are currently on a category, tag, or author path, otherwise set base news URL
+      const pathname = window.location.pathname.toLowerCase().trim();
+      let targetPath = '/news';
+      if (pathname.includes('/category/') || pathname.includes('/tag/') || pathname.includes('/author/')) {
+        targetPath = window.location.pathname;
+      }
+      
+      const baseUrl = `${window.location.origin}${targetPath}`;
+      window.history.replaceState(null, '', targetPath);
 
       updateSEOMetadata({
         title: "সংবাদ ও কলাম | সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা",
@@ -156,11 +162,32 @@ export default function NewsBlogSection({
     }
   }, [selectedNews, selectedBlog]);
 
-  // Deep linking support for crawler indexing
+  // Deep linking support for crawler indexing and clean route pathnames
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const newsId = params.get('newsId');
-    const blogId = params.get('blogId');
+    const pathname = window.location.pathname.toLowerCase().replace(/\/$/, '');
+    
+    let newsId = params.get('newsId');
+    let blogId = params.get('blogId');
+    
+    // Check clean path for news/blog/post ID
+    if (!newsId && !blogId) {
+      const newsMatch = window.location.pathname.match(/\/news\/([a-zA-Z0-9_-]+)/i);
+      const postMatch = window.location.pathname.match(/\/post\/([a-zA-Z0-9_-]+)/i);
+      const blogMatch = window.location.pathname.match(/\/blog\/([a-zA-Z0-9_-]+)/i);
+      
+      const matchedId = (newsMatch && newsMatch[1]) || (postMatch && postMatch[1]) || (blogMatch && blogMatch[1]);
+      if (matchedId) {
+        // Try to find in news first, then in blogs
+        const isNews = news.some(n => n.id === matchedId);
+        if (isNews) {
+          newsId = matchedId;
+        } else {
+          blogId = matchedId;
+        }
+      }
+    }
+    
     if (newsId && news && news.length > 0) {
       const found = news.find(n => n.id === newsId);
       if (found) setSelectedNews(found);
@@ -168,7 +195,29 @@ export default function NewsBlogSection({
       const found = blogs.find(b => b.id === blogId);
       if (found) setSelectedBlog(found);
     }
+
+    // Handle Category, Tag, Author routing filters
+    if (pathname.includes('/category/')) {
+      const cat = decodeURIComponent(window.location.pathname.split('/category/')[1]);
+      if (cat) {
+        setNewsCategoryFilter(cat.trim().toLowerCase());
+        setActiveTab('all');
+      }
+    } else if (pathname.includes('/tag/')) {
+      const tag = decodeURIComponent(window.location.pathname.split('/tag/')[1]);
+      if (tag) {
+        setSearchQuery(tag.trim());
+        setActiveTab('all');
+      }
+    } else if (pathname.includes('/author/')) {
+      const author = decodeURIComponent(window.location.pathname.split('/author/')[1]);
+      if (author) {
+        setSearchQuery(author.trim());
+        setActiveTab('all');
+      }
+    }
   }, [news, blogs]);
+
   
   // Comment Form state
   const [commentName, setCommentName] = useState('');
