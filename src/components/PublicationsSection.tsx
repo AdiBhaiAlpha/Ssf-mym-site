@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BookOpen, Download, Eye, Tag, AlertTriangle, BookMarked, HelpCircle, FileText, CheckCircle, Lock, Share2, Facebook, Twitter, MessageSquare, Link, Check } from 'lucide-react';
 import { Book } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
+import { updateSEOMetadata } from '../lib/seo';
 
 interface PublicationsSectionProps {
   books: Book[];
@@ -16,6 +17,62 @@ export default function PublicationsSection({ books, onDownloadBook, isVerifiedM
   const [showDownloadNote, setShowDownloadNote] = useState<string | null>(null);
   const [restrictedBook, setRestrictedBook] = useState<Book | null>(null);
   const [copiedBookId, setCopiedBookId] = useState<string | null>(null);
+
+  // Dynamic SEO update on book select/read
+  useEffect(() => {
+    if (readingBook) {
+      const cleanDesc = readingBook.description || `সমাজতান্ত্রিক ছাত্র ফ্রন্ট ময়মনসিংহ জেলা শাখার প্রকাশনা - ${readingBook.title}। লেখক: ${readingBook.author}`;
+      const uniqueUrl = `${window.location.origin}${window.location.pathname}?tab=books&bookId=${readingBook.id}`;
+
+      // Sync address bar URL for sharing
+      window.history.replaceState(null, '', uniqueUrl);
+
+      const bookSchema = {
+        "@context": "https://schema.org",
+        "@type": "Book",
+        "name": readingBook.title,
+        "author": {
+          "@type": "Person",
+          "name": readingBook.author
+        },
+        "description": cleanDesc,
+        "image": readingBook.coverUrl || "https://i.ibb.co.com/F4MKM3R2/20260527-055637.png",
+        "publisher": {
+          "@type": "Organization",
+          "name": "সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা"
+        }
+      };
+
+      updateSEOMetadata({
+        title: `${readingBook.title} | সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা`,
+        description: cleanDesc,
+        image: readingBook.coverUrl,
+        type: 'book',
+        url: uniqueUrl,
+        schema: bookSchema
+      });
+    } else {
+      const baseUrl = `${window.location.origin}${window.location.pathname}?tab=books`;
+      window.history.replaceState(null, '', baseUrl);
+
+      updateSEOMetadata({
+        title: "শিক্ষা ও প্রকাশনা | সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা",
+        description: "মার্ক্সীয় দর্শন, পুঁজিবাদবিরোধী লড়াই, রাজনৈতিক প্রবন্ধ, বিপ্লবী ইতিহাস এবং সমাজতান্ত্রিক ছাত্র ফ্রন্টের বিভিন্ন বৈপ্লবিক ও তাত্ত্বিক প্রকাশনাসমূহ।",
+        type: 'website',
+        url: baseUrl
+      });
+    }
+  }, [readingBook]);
+
+  // Deep linking support for crawler indexing
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const bookId = params.get('bookId');
+    if (bookId && books && books.length > 0) {
+      const found = books.find(b => b.id === bookId);
+      if (found) setReadingBook(found);
+    }
+  }, [books]);
 
   const filteredBooks = books.filter((b) => {
     const matchesFilter = activeFilter === 'all' || b.type === activeFilter;
@@ -191,7 +248,7 @@ export default function PublicationsSection({ books, onDownloadBook, isVerifiedM
                 </span>
                 <div className="flex items-center gap-1.5">
                   <a
-                    href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=books` : '')}`}
+                    href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=books&bookId=${book.id}` : '')}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="p-1.5 bg-zinc-50 hover:bg-[#1877F2]/10 text-zinc-500 hover:text-[#1877F2] rounded border border-zinc-200/50 dark:bg-zinc-900/40 dark:border-zinc-800/40 transition"
@@ -200,7 +257,7 @@ export default function PublicationsSection({ books, onDownloadBook, isVerifiedM
                     <Facebook className="w-3 h-3" />
                   </a>
                   <a
-                    href={`https://twitter.com/intent/tweet?text=${encodeURIComponent('কমরেড, ' + book.title + ' বইটি পড়ার জন্য আমন্ত্রণঃ ')}&url=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=books` : '')}`}
+                    href={`https://twitter.com/intent/tweet?text=${encodeURIComponent('কমরেড, ' + book.title + ' বইটি পড়ার জন্য আমন্ত্রণঃ ')}&url=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=books&bookId=${book.id}` : '')}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="p-1.5 bg-zinc-50 hover:bg-[#1DA1F2]/10 text-zinc-500 hover:text-[#1DA1F2] rounded border border-zinc-200/50 dark:bg-zinc-900/40 dark:border-zinc-800/40 transition"
@@ -209,7 +266,7 @@ export default function PublicationsSection({ books, onDownloadBook, isVerifiedM
                     <Twitter className="w-3 h-3" />
                   </a>
                   <a
-                    href={`https://api.whatsapp.com/send?text=${encodeURIComponent('কমরেড, ' + book.title + ' বইটি পড়তে ভিজিট করুনঃ ' + (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=books` : ''))}`}
+                    href={`https://api.whatsapp.com/send?text=${encodeURIComponent('কমরেড, ' + book.title + ' বইটি পড়তে ভিজিট করুনঃ ' + (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=books&bookId=${book.id}` : ''))}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="p-1.5 bg-zinc-50 hover:bg-[#25D366]/10 text-zinc-500 hover:text-[#25D366] rounded border border-zinc-200/50 dark:bg-zinc-900/45 dark:border-zinc-800/40 transition"
@@ -219,7 +276,7 @@ export default function PublicationsSection({ books, onDownloadBook, isVerifiedM
                   </a>
                   <button
                     onClick={() => {
-                      const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=books` : '';
+                      const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=books&bookId=${book.id}` : '';
                       navigator.clipboard.writeText(shareUrl);
                       setCopiedBookId(book.id);
                       setTimeout(() => setCopiedBookId(null), 2000);

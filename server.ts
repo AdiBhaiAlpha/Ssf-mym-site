@@ -288,6 +288,179 @@ async function startServer() {
     res.json(db);
   });
 
+  // Dynamic robots.txt
+  app.get('/robots.txt', (req, res) => {
+    const proto = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+    const host = req.headers.host;
+    res.type('text/plain');
+    res.send(`User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin
+
+Sitemap: ${proto}://${host}/sitemap.xml`);
+  });
+
+  // Dynamic sitemap.xml
+  app.get('/sitemap.xml', (req, res) => {
+    const proto = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+    const host = req.headers.host;
+    const baseUrl = `${proto}://${host}`;
+
+    let db: AppDatabase;
+    try {
+      db = loadDatabase();
+    } catch (e) {
+      db = getInitialDBState();
+    }
+
+    const tabs = ['home', 'news', 'books', 'events', 'circulars', 'about', 'join', 'portal', 'media', 'contact'];
+    
+    let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`;
+
+    // 1. Add static/tab routes
+    tabs.forEach(tab => {
+      xml += `
+  <url>
+    <loc>${baseUrl}/?tab=${tab}</loc>
+    <changefreq>daily</changefreq>
+    <priority>${tab === 'home' ? '1.0' : '0.8'}</priority>
+  </url>`;
+    });
+
+    // 2. Add News articles
+    if (db.news && Array.isArray(db.news)) {
+      db.news.forEach(item => {
+        xml += `
+  <url>
+    <loc>${baseUrl}/?tab=news&amp;newsId=${item.id}</loc>
+    <lastmod>${item.date ? new Date(item.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>`;
+      });
+    }
+
+    // 3. Add Blog posts
+    if (db.blogs && Array.isArray(db.blogs)) {
+      db.blogs.forEach(item => {
+        xml += `
+  <url>
+    <loc>${baseUrl}/?tab=news&amp;blogId=${item.id}</loc>
+    <lastmod>${item.date ? new Date(item.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>`;
+      });
+    }
+
+    // 4. Add Events
+    if (db.events && Array.isArray(db.events)) {
+      db.events.forEach(item => {
+        xml += `
+  <url>
+    <loc>${baseUrl}/?tab=events&amp;eventId=${item.id}</loc>
+    <lastmod>${item.date ? new Date(item.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>`;
+      });
+    }
+
+    // 5. Add Books/Publications
+    if (db.books && Array.isArray(db.books)) {
+      db.books.forEach(item => {
+        xml += `
+  <url>
+    <loc>${baseUrl}/?tab=books&amp;bookId=${item.id}</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>`;
+      });
+    }
+
+    xml += `
+</urlset>`;
+
+    res.type('application/xml');
+    res.send(xml);
+  });
+
+  // Dynamic RSS and Feed XML
+  const handleRSS = (req: any, res: any) => {
+    const proto = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+    const host = req.headers.host;
+    const baseUrl = `${proto}://${host}`;
+
+    let db: AppDatabase;
+    try {
+      db = loadDatabase();
+    } catch (e) {
+      db = getInitialDBState();
+    }
+
+    res.type('application/xml');
+
+    let rss = `<?xml version="1.0" encoding="UTF-8" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+<channel>
+  <title>সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা</title>
+  <link>${baseUrl}</link>
+  <description>সমাজতান্ত্রিক ছাত্র ফ্রন্ট ময়মনসিংহ জেলা শাখা - সর্বজনীন গণতান্ত্রিক ও বৈজ্ঞানিক সমাজতান্ত্রিক সমাজ বিনির্মাণের লক্ষ্যে আপোষহীন প্রগতিশীল ছাত্র আন্দোলন।</description>
+  <language>bn</language>
+  <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
+  <atom:link href="${baseUrl}/rss.xml" rel="self" type="application/rss+xml" />`;
+
+    const items: any[] = [];
+    if (db.news && Array.isArray(db.news)) {
+      db.news.forEach(item => {
+        items.push({
+          title: item.title,
+          link: `${baseUrl}/?tab=news&amp;newsId=${item.id}`,
+          guid: `news_${item.id}`,
+          description: item.excerpt || (item.content ? item.content.replace(/<[^>]*>/g, '').slice(0, 200) + '...' : ''),
+          pubDate: item.date ? new Date(item.date).toUTCString() : new Date().toUTCString()
+        });
+      });
+    }
+
+    if (db.blogs && Array.isArray(db.blogs)) {
+      db.blogs.forEach(item => {
+        items.push({
+          title: item.title,
+          link: `${baseUrl}/?tab=news&amp;blogId=${item.id}`,
+          guid: `blog_${item.id}`,
+          description: item.excerpt || (item.content ? item.content.replace(/<[^>]*>/g, '').slice(0, 200) + '...' : ''),
+          pubDate: item.date ? new Date(item.date).toUTCString() : new Date().toUTCString()
+        });
+      });
+    }
+
+    // Sort by pubDate descending
+    items.sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
+
+    items.slice(0, 30).forEach(item => {
+      rss += `
+  <item>
+    <title><![CDATA[${item.title}]]></title>
+    <link>${item.link}</link>
+    <guid isPermaLink="false">${item.guid}</guid>
+    <description><![CDATA[${item.description}]]></description>
+    <pubDate>${item.pubDate}</pubDate>
+  </item>`;
+    });
+
+    rss += `
+</channel>
+</rss>`;
+
+    res.send(rss);
+  };
+
+  app.get('/rss.xml', handleRSS);
+  app.get('/feed.xml', handleRSS);
+
   // API Route - Log audit actions
   app.post('/api/logs', (req, res) => {
     const { action, user, details } = req.body;
@@ -1193,12 +1366,281 @@ async function startServer() {
     res.json(invite);
   });
 
+  // Helper for enterprise SEO dynamic meta tag injection
+  const getDynamicSEO = (req: any, db: AppDatabase) => {
+    const proto = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+    const host = req.headers.host;
+    const baseUrl = `${proto}://${host}`;
+    const currentUrl = `${baseUrl}${req.originalUrl}`;
+
+    const defaultTitle = "সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা";
+    const defaultDesc = "সমাজতান্ত্রিক ছাত্র ফ্রন্ট ময়মনসিংহ জেলা শাখা - সর্বজনীন গণতান্ত্রিক ও বৈজ্ঞানিক সমাজতান্ত্রিক সমাজ বিনির্মাণের লক্ষ্যে আপোষহীন প্রগতিশীল ছাত্র আন্দোলন।";
+    const defaultImage = "https://i.ibb.co.com/F4MKM3R2/20260527-055637.png";
+
+    let title = defaultTitle;
+    let description = defaultDesc;
+    let image = defaultImage;
+    let type = "website";
+    let schema: any = null;
+
+    const orgSchema = {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "@id": `${baseUrl}/#organization`,
+      "name": "সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা",
+      "url": baseUrl,
+      "logo": {
+        "@type": "ImageObject",
+        "url": defaultImage
+      },
+      "sameAs": [
+        "https://www.facebook.com/sf.mymensingh"
+      ]
+    };
+
+    const breadcrumbListSchema = (steps: { name: string, item: string }[]) => ({
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": steps.map((step, idx) => ({
+        "@type": "ListItem",
+        "position": idx + 1,
+        "name": step.name,
+        "item": step.item
+      }))
+    });
+
+    const query = req.query || {};
+
+    if (query.newsId && db.news) {
+      const newsItem = db.news.find((n: any) => n.id === query.newsId);
+      if (newsItem) {
+        title = `${newsItem.title} | ${defaultTitle}`;
+        description = newsItem.excerpt || (newsItem.content ? newsItem.content.replace(/<[^>]*>/g, '').slice(0, 150) + '...' : defaultDesc);
+        image = newsItem.image || defaultImage;
+        type = "article";
+        schema = [
+          orgSchema,
+          {
+            "@context": "https://schema.org",
+            "@type": "NewsArticle",
+            "mainEntityOfPage": {
+              "@type": "WebPage",
+              "@id": currentUrl
+            },
+            "headline": newsItem.title,
+            "description": description,
+            "image": image,
+            "datePublished": newsItem.date ? new Date(newsItem.date).toISOString() : new Date().toISOString(),
+            "author": {
+              "@type": "Organization",
+              "name": "সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা"
+            },
+            "publisher": orgSchema
+          },
+          breadcrumbListSchema([
+            { name: "প্রচ্ছদ", item: baseUrl },
+            { name: "সংবাদ ও কলাম", item: `${baseUrl}/?tab=news` },
+            { name: newsItem.title, item: currentUrl }
+          ])
+        ];
+      }
+    } else if (query.blogId && db.blogs) {
+      const blogItem = db.blogs.find((b: any) => b.id === query.blogId);
+      if (blogItem) {
+        title = `${blogItem.title} | ${defaultTitle}`;
+        description = blogItem.excerpt || (blogItem.content ? blogItem.content.replace(/<[^>]*>/g, '').slice(0, 150) + '...' : defaultDesc);
+        image = blogItem.image || defaultImage;
+        type = "article";
+        schema = [
+          orgSchema,
+          {
+            "@context": "https://schema.org",
+            "@type": "BlogPosting",
+            "mainEntityOfPage": {
+              "@type": "WebPage",
+              "@id": currentUrl
+            },
+            "headline": blogItem.title,
+            "description": description,
+            "image": image,
+            "datePublished": blogItem.date ? new Date(blogItem.date).toISOString() : new Date().toISOString(),
+            "author": {
+              "@type": "Person",
+              "name": blogItem.author || "কমরেড লেখক"
+            },
+            "publisher": orgSchema
+          },
+          breadcrumbListSchema([
+            { name: "প্রচ্ছদ", item: baseUrl },
+            { name: "নিবন্ধ ও কলাম", item: `${baseUrl}/?tab=news` },
+            { name: blogItem.title, item: currentUrl }
+          ])
+        ];
+      }
+    } else if (query.eventId && db.events) {
+      const eventItem = db.events.find((e: any) => e.id === query.eventId);
+      if (eventItem) {
+        title = `${eventItem.title} | ${defaultTitle}`;
+        description = eventItem.description || `সমাজতান্ত্রিক ছাত্র ফ্রন্ট ময়মনসিংহ জেলা সংসদের আয়োজন। তারিখ: ${eventItem.date}, ভেন্যু: ${eventItem.venue}`;
+        image = defaultImage;
+        type = "event";
+        schema = [
+          orgSchema,
+          {
+            "@context": "https://schema.org",
+            "@type": "Event",
+            "name": eventItem.title,
+            "description": description,
+            "startDate": eventItem.date ? new Date(eventItem.date).toISOString() : new Date().toISOString(),
+            "location": {
+              "@type": "Place",
+              "name": eventItem.venue || "ময়মনসিংহ জেলা কার্যালয়",
+              "address": {
+                "@type": "PostalAddress",
+                "addressLocality": "Mymensingh",
+                "addressRegion": "Mymensingh Division",
+                "addressCountry": "BD"
+              }
+            },
+            "organizer": orgSchema
+          },
+          breadcrumbListSchema([
+            { name: "প্রচ্ছদ", item: baseUrl },
+            { name: "কর্মসূচী", item: `${baseUrl}/?tab=events` },
+            { name: eventItem.title, item: currentUrl }
+          ])
+        ];
+      }
+    } else if (query.bookId && db.books) {
+      const bookItem = db.books.find((b: any) => b.id === query.bookId);
+      if (bookItem) {
+        title = `${bookItem.title} | ${defaultTitle}`;
+        description = bookItem.description || `সমাজতান্ত্রিক ছাত্র ফ্রন্ট ময়মনসিংহ জেলা শাখার প্রকাশনা - ${bookItem.title}। লেখক: ${bookItem.author}`;
+        image = bookItem.coverImage || defaultImage;
+        type = "book";
+        schema = [
+          orgSchema,
+          {
+            "@context": "https://schema.org",
+            "@type": "Book",
+            "name": bookItem.title,
+            "author": {
+              "@type": "Person",
+              "name": bookItem.author
+            },
+            "description": description,
+            "image": image,
+            "publisher": orgSchema
+          },
+          breadcrumbListSchema([
+            { name: "প্রচ্ছদ", item: baseUrl },
+            { name: "শিক্ষা ও প্রকাশনা", item: `${baseUrl}/?tab=books` },
+            { name: bookItem.title, item: currentUrl }
+          ])
+        ];
+      }
+    } else if (query.tab) {
+      const tabNames: Record<string, string> = {
+        news: "সংবাদ ও কলাম",
+        books: "শিক্ষা ও প্রকাশনা",
+        events: "আসন্ন ইভেন্ট ও কর্মসূচী",
+        circulars: "সাংগঠনিক সার্কুলার",
+        about: "আমাদের সম্পর্কে ও গঠনতন্ত্র",
+        join: "অনলাইন সদস্যপদ আবেদন ফরম",
+        portal: "মেম্বার ও কমরেড পোর্টাল",
+        media: "ফটোগ্রাফি ও মিডিয়া সেন্টার",
+        contact: "যোগাযোগ করুন"
+      };
+      if (tabNames[query.tab]) {
+        title = `${tabNames[query.tab]} | ${defaultTitle}`;
+        schema = [
+          orgSchema,
+          breadcrumbListSchema([
+            { name: "প্রচ্ছদ", item: baseUrl },
+            { name: tabNames[query.tab], item: currentUrl }
+          ])
+        ];
+      }
+    } else {
+      schema = [
+        orgSchema,
+        {
+          "@context": "https://schema.org",
+          "@type": "WebSite",
+          "@id": `${baseUrl}/#website`,
+          "url": baseUrl,
+          "name": defaultTitle,
+          "description": defaultDesc,
+          "publisher": orgSchema
+        }
+      ];
+    }
+
+    return { title, description, image, type, currentUrl, schema };
+  };
+
   // Serve static assets in production
   if (process.env.NODE_ENV === 'production') {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, {
+      maxAge: '1d',
+      etag: true
+    }));
+
+    let cachedHtml: string | null = null;
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+
+      let db: AppDatabase;
+      try {
+        db = loadDatabase();
+      } catch (e) {
+        db = getInitialDBState();
+      }
+
+      const seo = getDynamicSEO(req, db);
+
+      const serveHtml = (baseHtml: string) => {
+        const replacement = `
+    <title>${seo.title}</title>
+    <meta name="description" content="${seo.description}" />
+    <link rel="canonical" href="${seo.currentUrl}" />
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="${seo.type}" />
+    <meta property="og:title" content="${seo.title}" />
+    <meta property="og:description" content="${seo.description}" />
+    <meta property="og:image" content="${seo.image}" />
+    <meta property="og:url" content="${seo.currentUrl}" />
+    <meta property="og:site_name" content="সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা" />
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${seo.title}" />
+    <meta name="twitter:description" content="${seo.description}" />
+    <meta name="twitter:image" content="${seo.image}" />
+    ${seo.schema ? `<script type="application/ld+json">${JSON.stringify(seo.schema)}</script>` : ''}
+        `;
+
+        let output = baseHtml;
+        output = output.replace(/<title>[^]*?<\/title>/gi, '');
+        output = output.replace(/<meta\s+name="description"\s+content="[^]*?"\s*\/?>/gi, '');
+        output = output.replace('</head>', `${replacement}\n</head>`);
+        res.send(output);
+      };
+
+      if (cachedHtml) {
+        serveHtml(cachedHtml);
+      } else {
+        const indexPath = path.join(distPath, 'index.html');
+        fs.readFile(indexPath, 'utf-8', (err, content) => {
+          if (err) {
+            return res.sendFile(indexPath);
+          }
+          cachedHtml = content;
+          serveHtml(content);
+        });
+      }
     });
   } else {
     // Vite middleware for development

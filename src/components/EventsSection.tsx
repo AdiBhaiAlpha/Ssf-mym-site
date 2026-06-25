@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, MapPin, Users, HeartHandshake, CheckCircle2, Ticket, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Event, EventRegistrant } from '../types';
 import { motion } from 'motion/react';
+import { updateSEOMetadata } from '../lib/seo';
 
 interface EventsSectionProps {
   events: Event[];
@@ -18,6 +19,67 @@ export default function EventsSection({ events, onRegisterEvent }: EventsSection
   const [regInstitution, setRegInstitution] = useState('');
   const [regSuccess, setRegSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // Dynamic SEO update on event select
+  useEffect(() => {
+    if (selectedEvent) {
+      const cleanDesc = selectedEvent.description || `সমাজতান্ত্রিক ছাত্র ফ্রন্ট ময়মনসিংহ জেলা সংসদের আয়োজন। তারিখ: ${selectedEvent.date}, ভেন্যু: ${selectedEvent.venue}`;
+      const uniqueUrl = `${window.location.origin}${window.location.pathname}?tab=events&eventId=${selectedEvent.id}`;
+
+      // Sync address bar URL for sharing
+      window.history.replaceState(null, '', uniqueUrl);
+
+      const eventSchema = {
+        "@context": "https://schema.org",
+        "@type": "Event",
+        "name": selectedEvent.title,
+        "description": cleanDesc,
+        "startDate": selectedEvent.date,
+        "location": {
+          "@type": "Place",
+          "name": selectedEvent.venue,
+          "address": {
+            "@type": "PostalAddress",
+            "addressLocality": "Mymensingh",
+            "addressCountry": "BD"
+          }
+        },
+        "organizer": {
+          "@type": "Organization",
+          "name": "সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা",
+          "url": typeof window !== 'undefined' ? window.location.origin : ''
+        }
+      };
+
+      updateSEOMetadata({
+        title: `${selectedEvent.title} | সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা`,
+        description: cleanDesc,
+        type: 'event',
+        url: uniqueUrl,
+        schema: eventSchema
+      });
+    } else {
+      const baseUrl = `${window.location.origin}${window.location.pathname}?tab=events`;
+      window.history.replaceState(null, '', baseUrl);
+
+      updateSEOMetadata({
+        title: "আসন্ন ইভেন্ট ও কর্মসূচী | সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা",
+        description: "ময়মনসিংহ জেলা সংসদের কর্মী সভা, রাজনৈতিক পাঠচক্র, প্রতিবাদী সমাবেশ ও সাংস্কৃতিক অনুষ্ঠানসমূহের বিস্তারিত বিবরণ এবং অংশগ্রহণ ফরম।",
+        type: 'website',
+        url: baseUrl
+      });
+    }
+  }, [selectedEvent]);
+
+  // Deep linking support for crawler indexing
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const eventId = params.get('eventId');
+    if (eventId && events && events.length > 0) {
+      const found = events.find(e => e.id === eventId);
+      if (found) setSelectedEvent(found);
+    }
+  }, [events]);
 
   // Dynamic Month & Calendar State (Defaulting to June 2026 from local context date)
   const [viewMode, setViewMode] = useState<'split' | 'calendar' | 'list'>('split');

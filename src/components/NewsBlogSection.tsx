@@ -3,6 +3,7 @@ import { Search, Tag, MessageSquare, Clock, User, ArrowLeft, RefreshCw, Send, Ch
 import { News, Blog, Comment } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { saveFirestoreDoc } from '../firebase';
+import { updateSEOMetadata } from '../lib/seo';
 
 interface NewsBlogSectionProps {
   news: News[];
@@ -33,8 +34,13 @@ export default function NewsBlogSection({
   const [copiedFeedId, setCopiedFeedId] = useState<string | null>(null);
 
   const handleCopyLink = () => {
-    const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '';
-    navigator.clipboard.writeText(shareUrl || window.location.href);
+    let shareUrl = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '';
+    if (selectedNews) {
+      shareUrl = `${window.location.origin}${window.location.pathname}?tab=news&newsId=${selectedNews.id}`;
+    } else if (selectedBlog) {
+      shareUrl = `${window.location.origin}${window.location.pathname}?tab=news&blogId=${selectedBlog.id}`;
+    }
+    navigator.clipboard.writeText(shareUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
@@ -61,6 +67,108 @@ export default function NewsBlogSection({
       };
     }
   }, [selectedNews, selectedBlog]);
+
+  // Dynamic SEO metadata update when a news or blog post is selected
+  useEffect(() => {
+    if (selectedNews) {
+      const cleanDesc = selectedNews.excerpt || (selectedNews.content ? selectedNews.content.slice(0, 150) + '...' : '');
+      const uniqueUrl = `${window.location.origin}${window.location.pathname}?tab=news&newsId=${selectedNews.id}`;
+      
+      // Sync address bar URL for sharing
+      window.history.replaceState(null, '', uniqueUrl);
+
+      const articleSchema = {
+        "@context": "https://schema.org",
+        "@type": "NewsArticle",
+        "headline": selectedNews.title,
+        "description": cleanDesc,
+        "image": [selectedNews.image || 'https://i.ibb.co.com/F4MKM3R2/20260527-055637.png'],
+        "datePublished": selectedNews.date,
+        "author": [{
+          "@type": "Person",
+          "name": selectedNews.author || "সমাজতান্ত্রিক ছাত্র ফ্রন্ট"
+        }],
+        "publisher": {
+          "@type": "Organization",
+          "name": "সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://i.ibb.co.com/F4MKM3R2/20260527-055637.png"
+          }
+        }
+      };
+
+      updateSEOMetadata({
+        title: `${selectedNews.title} | সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা`,
+        description: cleanDesc,
+        image: selectedNews.image,
+        type: 'article',
+        url: uniqueUrl,
+        schema: articleSchema
+      });
+    } else if (selectedBlog) {
+      const cleanDesc = selectedBlog.excerpt || (selectedBlog.content ? selectedBlog.content.slice(0, 150) + '...' : '');
+      const uniqueUrl = `${window.location.origin}${window.location.pathname}?tab=news&blogId=${selectedBlog.id}`;
+
+      // Sync address bar URL for sharing
+      window.history.replaceState(null, '', uniqueUrl);
+
+      const blogSchema = {
+        "@context": "https://schema.org",
+        "@type": "BlogPosting",
+        "headline": selectedBlog.title,
+        "description": cleanDesc,
+        "image": [selectedBlog.image || 'https://i.ibb.co.com/F4MKM3R2/20260527-055637.png'],
+        "datePublished": selectedBlog.date,
+        "author": [{
+          "@type": "Person",
+          "name": selectedBlog.author || "কমরেড"
+        }],
+        "publisher": {
+          "@type": "Organization",
+          "name": "সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://i.ibb.co.com/F4MKM3R2/20260527-055637.png"
+          }
+        }
+      };
+
+      updateSEOMetadata({
+        title: `${selectedBlog.title} | সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা`,
+        description: cleanDesc,
+        image: selectedBlog.image,
+        type: 'article',
+        url: uniqueUrl,
+        schema: blogSchema
+      });
+    } else {
+      // Revert address bar back to base news tab
+      const baseUrl = `${window.location.origin}${window.location.pathname}?tab=news`;
+      window.history.replaceState(null, '', baseUrl);
+
+      updateSEOMetadata({
+        title: "সংবাদ ও কলাম | সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা",
+        description: "সমাজতান্ত্রিক ছাত্র ফ্রন্ট ময়মনসিংহ জেলা শাখার সাম্প্রতিক কর্মকাণ্ড, প্রেস বিজ্ঞপ্তি, ছাত্র আন্দোলন এবং তাত্ত্বিক কলাম ও বিশ্লেষণ।",
+        type: 'website',
+        url: baseUrl
+      });
+    }
+  }, [selectedNews, selectedBlog]);
+
+  // Deep linking support for crawler indexing
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const newsId = params.get('newsId');
+    const blogId = params.get('blogId');
+    if (newsId && news && news.length > 0) {
+      const found = news.find(n => n.id === newsId);
+      if (found) setSelectedNews(found);
+    } else if (blogId && blogs && blogs.length > 0) {
+      const found = blogs.find(b => b.id === blogId);
+      if (found) setSelectedBlog(found);
+    }
+  }, [news, blogs]);
   
   // Comment Form state
   const [commentName, setCommentName] = useState('');
@@ -176,7 +284,7 @@ export default function NewsBlogSection({
                 <span>শেয়ার করুন:</span>
               </span>
               <a 
-                href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '')}`}
+                href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news&newsId=${selectedNews.id}` : '')}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-[#1877F2] hover:bg-[#166FE5] text-white rounded font-bold transition-all shadow-xs"
@@ -185,7 +293,7 @@ export default function NewsBlogSection({
                 <span>Facebook</span>
               </a>
               <a 
-                href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(selectedNews.title)}&url=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '')}`}
+                href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(selectedNews.title)}&url=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news&newsId=${selectedNews.id}` : '')}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-[#1DA1F2] hover:bg-[#1a91da] text-white rounded font-bold transition-all shadow-xs"
@@ -194,7 +302,7 @@ export default function NewsBlogSection({
                 <span>Twitter / X</span>
               </a>
               <a 
-                href={`https://api.whatsapp.com/send?text=${encodeURIComponent(selectedNews.title + ' ' + (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : ''))}`}
+                href={`https://api.whatsapp.com/send?text=${encodeURIComponent(selectedNews.title + ' ' + (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news&newsId=${selectedNews.id}` : ''))}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-[#25D366] hover:bg-[#20ba5a] text-white rounded font-bold transition-all shadow-xs"
@@ -311,7 +419,7 @@ export default function NewsBlogSection({
                 <span>শেয়ার করুন:</span>
               </span>
               <a 
-                href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '')}`}
+                href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news&blogId=${selectedBlog.id}` : '')}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-[#1877F2] hover:bg-[#166FE5] text-white rounded font-bold transition-all shadow-xs"
@@ -320,7 +428,7 @@ export default function NewsBlogSection({
                 <span>Facebook</span>
               </a>
               <a 
-                href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(selectedBlog.title)}&url=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '')}`}
+                href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(selectedBlog.title)}&url=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news&blogId=${selectedBlog.id}` : '')}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-[#1DA1F2] hover:bg-[#1a91da] text-white rounded font-bold transition-all shadow-xs"
@@ -329,7 +437,7 @@ export default function NewsBlogSection({
                 <span>Twitter / X</span>
               </a>
               <a 
-                href={`https://api.whatsapp.com/send?text=${encodeURIComponent(selectedBlog.title + ' ' + (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : ''))}`}
+                href={`https://api.whatsapp.com/send?text=${encodeURIComponent(selectedBlog.title + ' ' + (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news&blogId=${selectedBlog.id}` : ''))}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-[#25D366] hover:bg-[#20ba5a] text-white rounded font-bold transition-all shadow-xs"
@@ -603,7 +711,7 @@ export default function NewsBlogSection({
                         </span>
                         <div className="flex items-center gap-1.5">
                           <a
-                            href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '')}`}
+                            href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news&newsId=${art.id}` : '')}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="p-1.5 bg-zinc-50 hover:bg-[#1877F2]/10 text-zinc-500 hover:text-[#1877F2] rounded border border-zinc-200/50 dark:bg-zinc-900/40 dark:border-zinc-800/40 transition"
@@ -612,7 +720,7 @@ export default function NewsBlogSection({
                             <Facebook className="w-3 h-3" />
                           </a>
                           <a
-                            href={`https://twitter.com/intent/tweet?text=${encodeURIComponent('সংবাদঃ ' + art.title + ' ')}&url=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '')}`}
+                            href={`https://twitter.com/intent/tweet?text=${encodeURIComponent('সংবাদঃ ' + art.title + ' ')}&url=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news&newsId=${art.id}` : '')}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="p-1.5 bg-zinc-50 hover:bg-[#1DA1F2]/10 text-zinc-500 hover:text-[#1DA1F2] rounded border border-zinc-200/50 dark:bg-zinc-900/40 dark:border-zinc-800/40 transition"
@@ -621,7 +729,7 @@ export default function NewsBlogSection({
                             <Twitter className="w-3 h-3" />
                           </a>
                           <a
-                            href={`https://api.whatsapp.com/send?text=${encodeURIComponent('সংবাদঃ ' + art.title + '\nলিংকঃ ' + (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : ''))}`}
+                            href={`https://api.whatsapp.com/send?text=${encodeURIComponent('সংবাদঃ ' + art.title + '\nলিংকঃ ' + (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news&newsId=${art.id}` : ''))}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="p-1.5 bg-zinc-50 hover:bg-[#25D366]/10 text-zinc-500 hover:text-[#25D366] rounded border border-zinc-200/50 dark:bg-zinc-900/45 dark:border-zinc-800/40 transition"
@@ -631,7 +739,7 @@ export default function NewsBlogSection({
                           </a>
                           <button
                             onClick={() => {
-                              const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '';
+                              const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news&newsId=${art.id}` : '';
                               navigator.clipboard.writeText(shareUrl);
                               setCopiedFeedId(art.id);
                               setTimeout(() => setCopiedFeedId(null), 2000);
@@ -712,7 +820,7 @@ export default function NewsBlogSection({
                         </span>
                         <div className="flex items-center gap-1.5">
                           <a
-                            href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '')}`}
+                            href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news&blogId=${post.id}` : '')}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="p-1.5 bg-zinc-50 hover:bg-[#1877F2]/10 text-zinc-500 hover:text-[#1877F2] rounded border border-zinc-200/50 dark:bg-zinc-900/40 dark:border-zinc-800/40 transition"
@@ -721,7 +829,7 @@ export default function NewsBlogSection({
                             <Facebook className="w-3 h-3" />
                           </a>
                           <a
-                            href={`https://twitter.com/intent/tweet?text=${encodeURIComponent('নিবন্ধঃ ' + post.title + ' ')}&url=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '')}`}
+                            href={`https://twitter.com/intent/tweet?text=${encodeURIComponent('নিবন্ধঃ ' + post.title + ' ')}&url=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news&blogId=${post.id}` : '')}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="p-1.5 bg-zinc-50 hover:bg-[#1DA1F2]/10 text-zinc-500 hover:text-[#1DA1F2] rounded border border-zinc-200/50 dark:bg-zinc-900/40 dark:border-zinc-800/40 transition"
@@ -730,7 +838,7 @@ export default function NewsBlogSection({
                             <Twitter className="w-3 h-3" />
                           </a>
                           <a
-                            href={`https://api.whatsapp.com/send?text=${encodeURIComponent('নিবন্ধঃ ' + post.title + '\nলিংকঃ ' + (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : ''))}`}
+                            href={`https://api.whatsapp.com/send?text=${encodeURIComponent('নিবন্ধঃ ' + post.title + '\nলিংকঃ ' + (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news&blogId=${post.id}` : ''))}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="p-1.5 bg-zinc-50 hover:bg-[#25D366]/10 text-zinc-500 hover:text-[#25D366] rounded border border-zinc-200/50 dark:bg-zinc-900/45 dark:border-zinc-800/40 transition"
@@ -740,7 +848,7 @@ export default function NewsBlogSection({
                           </a>
                           <button
                             onClick={() => {
-                              const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news` : '';
+                              const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?tab=news&blogId=${post.id}` : '';
                               navigator.clipboard.writeText(shareUrl);
                               setCopiedFeedId(post.id);
                               setTimeout(() => setCopiedFeedId(null), 2000);

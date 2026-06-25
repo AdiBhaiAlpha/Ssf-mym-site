@@ -20,6 +20,7 @@ import { AppDatabase } from './server/db-initial';
 import { Volume2, RefreshCw, Smartphone, Monitor, ChevronRight } from 'lucide-react';
 import { fetchFirestoreDatabase, saveFirestoreDoc, deleteFirestoreDoc, resetFirestoreDatabase } from './firebase';
 import { motion, AnimatePresence } from 'motion/react';
+import { updateSEOMetadata } from './lib/seo';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState('home');
@@ -124,7 +125,14 @@ export default function App() {
 
     // Check query parameters to deep-link to tabs
     const params = new URLSearchParams(window.location.search);
-    const urlTab = params.get('tab');
+    let urlTab = params.get('tab');
+    if (!urlTab) {
+      if (params.get('newsId') || params.get('blogId')) {
+        urlTab = 'news';
+      } else if (params.get('bookId')) {
+        urlTab = 'books';
+      }
+    }
     if (urlTab && ['home', 'news', 'books', 'events', 'circulars', 'about', 'join', 'portal', 'media', 'contact'].includes(urlTab)) {
       setCurrentTab(urlTab);
     }
@@ -137,6 +145,63 @@ export default function App() {
     // Fetch database contents
     fetchDatabase();
   }, []);
+
+  // Dynamic SEO handler for main sections
+  useEffect(() => {
+    const seoConfig: Record<string, { title: string; description: string }> = {
+      home: {
+        title: "সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা",
+        description: "সমাজতান্ত্রিক ছাত্র ফ্রন্ট ময়মনসিংহ জেলা শাখা - সর্বজনীন গণতান্ত্রিক ও বৈজ্ঞানিক সমাজতান্ত্রিক সমাজ বিনির্মাণের লক্ষ্যে আপোষহীন প্রগতিশীল ছাত্র আন্দোলন।"
+      },
+      news: {
+        title: "সংবাদ ও কলাম | সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা",
+        description: "সমাজতান্ত্রিক ছাত্র ফ্রন্ট ময়মনসিংহ জেলা শাখার সাম্প্রতিক কর্মকাণ্ড, প্রেস বিজ্ঞপ্তি, ছাত্র আন্দোলন এবং তাত্ত্বিক কলাম ও বিশ্লেষণ।"
+      },
+      books: {
+        title: "শিক্ষা ও প্রকাশনা | সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা",
+        description: "মার্ক্সীয় দর্শন, পুঁজিবাদবিরোধী লড়াই, রাজনৈতিক প্রবন্ধ, বিপ্লবী ইতিহাস এবং সমাজতান্ত্রিক ছাত্র ফ্রন্টের বিভিন্ন বৈপ্লবিক ও তাত্ত্বিক প্রকাশনাসমূহ।"
+      },
+      events: {
+        title: "আসন্ন ইভেন্ট ও কর্মসূচী | সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা",
+        description: "ময়মনসিংহ জেলা সংসদের কর্মী সভা, রাজনৈতিক পাঠচক্র, প্রতিবাদী সমাবেশ ও সাংস্কৃতিক অনুষ্ঠানসমূহের বিস্তারিত বিবরণ এবং অংশগ্রহণ ফরম।"
+      },
+      circulars: {
+        title: "সাংগঠনিক সার্কুলার | সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা",
+        description: "সংগঠনের অভ্যন্তরীণ সিদ্ধান্ত, নির্দেশনা, দাপ্তরিক বিজ্ঞপ্তি ও সমাজতান্ত্রিক ছাত্র ফ্রন্ট ময়মনসিংহ জেলা সংসদের দাপ্তরিক সার্কুলারসমূহ।"
+      },
+      about: {
+        title: "আমাদের সম্পর্কে ও গঠনতন্ত্র | সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা",
+        description: "সমাজতান্ত্রিক ছাত্র ফ্রন্টের লক্ষ্য, রাজনৈতিক আদর্শ, ঐতিহাসিক রূপরেখা এবং গণতান্ত্রিক কেন্দ্রিকতা ভিত্তিক আপোষহীন সাংগঠনিক গঠনতন্ত্র।"
+      },
+      join: {
+        title: "অনলাইন সদস্যপদ আবেদন ফরম | সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা",
+        description: "সমাজতান্ত্রিক ছাত্র ফ্রন্ট ময়মনসিংহ জেলা শাখার সক্রিয় কর্মী বা সহযোগী হিসেবে যুক্ত হতে অনলাইন সদস্যপদ আবেদন ফরম পূরণ করুন।"
+      },
+      portal: {
+        title: "মেম্বার ও কমরেড পোর্টাল | সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা",
+        description: "সংগঠনের রেজিস্টার্ড সদস্যদের জন্য অনলাইন ড্যাশবোর্ড ও লগার, যেখানে দলীয় পরিচয়পত্র ডাউনলোড এবং কাজের রিপোর্ট তদারকি করা যায়।"
+      },
+      media: {
+        title: "ফটোগ্রাফি ও মিডিয়া সেন্টার | সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা",
+        description: "ঐতিহাসিক সমাবেশ, প্রতিবাদী স্লোগান, দেয়াল লিখন ও ময়মনসিংহের ছাত্র ফ্রন্টের বিভিন্ন প্রগতিশীল রাজনৈতিক আন্দোলনের চিত্রশালা।"
+      },
+      contact: {
+        title: "যোগাযোগ করুন | সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা",
+        description: "ময়মনসিংহ জেলা কার্যালয়ের ঠিকানা, মোবাইল নম্বর এবং ইমেইল। যেকোনো তথ্য বা প্রগতিশীল জিজ্ঞাসার জন্য আমাদের সাথে সরাসরি যোগাযোগ করুন।"
+      }
+    };
+
+    const config = seoConfig[currentTab] || seoConfig.home;
+    
+    // Only update if we are on pages that don't have secondary deep details selected
+    // Note: Child components like NewsBlogSection, EventsSection, and PublicationsSection will override the title when a detailed item is active
+    updateSEOMetadata({
+      title: config.title,
+      description: config.description,
+      type: 'website',
+      url: `${window.location.origin}${window.location.pathname}?tab=${currentTab}`
+    });
+  }, [currentTab]);
 
   // Sync darkmode state to document html element
   useEffect(() => {
