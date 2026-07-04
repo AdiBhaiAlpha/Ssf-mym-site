@@ -6,16 +6,46 @@ import { motion, AnimatePresence } from 'motion/react';
 interface CircularsSectionProps {
   circulars: Circular[];
   isVerifiedMember?: boolean;
+  onSelectItem?: (type: string, id: string) => void;
 }
 
-export default function CircularsSection({ circulars, isVerifiedMember = false }: CircularsSectionProps) {
+export default function CircularsSection({ circulars, isVerifiedMember = false, onSelectItem }: CircularsSectionProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Synchronize expandedId with URL for clean route pathnames and bookmark sharing
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const circId = params.get('circularId') || params.get('noticeId');
+    if (circId && circulars && circulars.length > 0) {
+      const found = circulars.some(c => c.id === circId);
+      if (found) {
+        setExpandedId(circId);
+        // Scroll to the expanded circular smoothly
+        setTimeout(() => {
+          const element = document.getElementById(`circular-${circId}`);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 300);
+      }
+    }
+  }, [circulars]);
 
   const toggleExpand = (id: string) => {
     if (expandedId === id) {
       setExpandedId(null);
+      const params = new URLSearchParams(window.location.search);
+      params.delete('circularId');
+      params.delete('noticeId');
+      const newQuery = params.toString();
+      const newUrl = `${window.location.pathname}${newQuery ? `?${newQuery}` : ''}`;
+      window.history.replaceState(null, '', newUrl);
     } else {
       setExpandedId(id);
+      const params = new URLSearchParams(window.location.search);
+      params.set('circularId', id);
+      const newUrl = `${window.location.pathname}?${params.toString()}`;
+      window.history.replaceState(null, '', newUrl);
     }
   };
 
@@ -41,6 +71,7 @@ export default function CircularsSection({ circulars, isVerifiedMember = false }
           return (
             <div
               key={circ.id}
+              id={`circular-${circ.id}`}
               className={`bg-white dark:bg-zinc-950 border rounded-sm overflow-hidden transition-all duration-300 ${
                 isExpanded
                   ? isRestricted ? 'border-amber-500 ring-1 ring-amber-500/10 shadow-sm' : 'border-rose-600 shadow-md ring-1 ring-rose-600/10'
@@ -49,7 +80,13 @@ export default function CircularsSection({ circulars, isVerifiedMember = false }
             >
               {/* Header Box */}
               <div
-                onClick={() => toggleExpand(circ.id)}
+                onClick={() => {
+                  if (onSelectItem) {
+                    onSelectItem('circular', circ.id);
+                  } else {
+                    toggleExpand(circ.id);
+                  }
+                }}
                 className="p-5 flex items-start sm:items-center justify-between gap-4 cursor-pointer select-none"
               >
                 <div className="flex items-start sm:items-center space-x-4 min-w-0 font-sans">

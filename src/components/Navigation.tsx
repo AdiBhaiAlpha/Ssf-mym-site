@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu, X, Sun, Moon, LogIn, LogOut, ShieldAlert, Award, FileText, Newspaper, BookOpen, Calendar, HelpCircle, Mail, Search, Bell } from 'lucide-react';
+import { Menu, X, Sun, Moon, LogIn, LogOut, ShieldAlert, Award, FileText, Newspaper, BookOpen, Calendar, HelpCircle, Mail, Search, Bell, Terminal } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { saveFirestoreDoc } from '../firebase';
 
@@ -18,6 +18,8 @@ interface NavigationProps {
   invitations?: any[];
   onInviteAction?: (id: string, action: 'accepted' | 'declined') => Promise<boolean>;
   onRegisterMember?: (registration: any) => Promise<any | null>;
+  showDebugConsole: boolean;
+  setShowDebugConsole: (show: boolean) => void;
 }
 
 export default function Navigation({
@@ -34,7 +36,9 @@ export default function Navigation({
   memberships = [],
   invitations = [],
   onInviteAction,
-  onRegisterMember
+  onRegisterMember,
+  showDebugConsole,
+  setShowDebugConsole
 }: NavigationProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -513,6 +517,18 @@ export default function Navigation({
               )}
 
               <button
+                onClick={() => setShowDebugConsole(!showDebugConsole)}
+                className={`p-2 rounded-full transition-all ${
+                  showDebugConsole 
+                    ? 'text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-950/30 border border-emerald-250 dark:border-emerald-900/40 font-bold' 
+                    : 'text-zinc-500 hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-500 hover:bg-zinc-100 dark:hover:bg-zinc-900'
+                }`}
+                title="ডেভেলপার ডিবাগ কনসোল"
+              >
+                <Terminal className="w-5 h-5" />
+              </button>
+
+              <button
                 onClick={() => setDarkMode(!darkMode)}
                 className="p-2 text-zinc-500 hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-500 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-all"
               >
@@ -607,6 +623,18 @@ export default function Navigation({
                   <Award className="h-4 w-4" />
                   <span>সদস্য হোন</span>
                 </a>
+
+                <button
+                  onClick={() => setShowDebugConsole(!showDebugConsole)}
+                  className={`p-2 rounded-full transition-all duration-200 relative ${
+                    showDebugConsole
+                      ? 'text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-950/30 border border-emerald-250 dark:border-emerald-900/40 font-bold'
+                      : 'text-zinc-500 hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-500 hover:bg-zinc-100 dark:hover:bg-zinc-900'
+                  }`}
+                  title="ডেভেলপার ডিবাগ কনসোল"
+                >
+                  <Terminal className="w-5 h-5" />
+                </button>
 
                 <button
                   onClick={() => setDarkMode(!darkMode)}

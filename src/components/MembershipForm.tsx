@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { UserPlus, ShieldAlert, CheckCircle2, Search, UserCheck, RefreshCw, X, ArrowRight, ShieldCheck, HeartHandshake, Landmark, FileCheck, Clock } from 'lucide-react';
 import { MemberRegistration } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
+import { useToast } from './Toast';
 
 interface MembershipFormProps {
   onRegisterMember: (registration: Omit<MemberRegistration, 'id' | 'status' | 'appliedAt'>) => Promise<MemberRegistration | null>;
@@ -10,6 +11,7 @@ interface MembershipFormProps {
 }
 
 export default function MembershipForm({ onRegisterMember, membersList, setCurrentTab }: MembershipFormProps) {
+  const toast = useToast();
   // Application modal state
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [duplicateEmailError, setDuplicateEmailError] = useState(false);
@@ -44,12 +46,12 @@ export default function MembershipForm({ onRegisterMember, membersList, setCurre
     const passVal = password.trim();
 
     if (!nameVal || !mobileVal || !instVal || !passVal) {
-      alert('দয়া করে প্রতিটি প্রয়োজনীয় তথ্য দিয়ে এবং অবশ্যই পাসওয়ার্ড পূরণ করুন।');
+      toast.warning('দয়া করে প্রতিটি প্রয়োজনীয় তথ্য দিয়ে এবং অবশ্যই পাসওয়ার্ড পূরণ করুন।');
       return;
     }
 
     if (passVal.length < 4) {
-      alert('নিরাপত্তার স্বার্থে পাসওয়ার্ডটি অবশ্যই কমপক্ষে ৪ অক্ষরের হতে হবে।');
+      toast.warning('নিরাপত্তার স্বার্থে পাসওয়ার্ডটি অবশ্যই কমপক্ষে ৪ অক্ষরের হতে হবে।');
       return;
     }
 

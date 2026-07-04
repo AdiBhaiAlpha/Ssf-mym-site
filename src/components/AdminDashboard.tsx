@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Shield, ToggleLeft, ToggleRight, Settings, PlusCircle, Pencil, Trash2, Calendar, FileText, BookOpen, Clock, Users, Activity, MessageSquare, Image, RefreshCw, AlertTriangle, Eye, Check, X, ShieldAlert, Upload, Download, BarChart3, TrendingUp, Newspaper, ArrowRight, Zap, Lightbulb, Droplets, Smartphone, Mail, User, MapPin, UserPlus } from 'lucide-react';
 import { News, Blog, Event, Book, Circular, GalleryItem, MemberRegistration, AuditLog, PageVisit, WebSettings, OrgWing, MemberLoginLog, getMemberBadgeText } from '../types';
 import CardVerificationModal from './CardVerificationModal';
+import { useToast } from './Toast';
 
 const BADGE_PRESETS = [
   'প্রাথমিক সদস্য',
@@ -57,6 +58,7 @@ interface AdminDashboardProps {
   onEditCircular?: (id: string, circular: Partial<Circular>) => Promise<boolean>;
   onDeleteCircular: (id: string) => Promise<boolean>;
   onAddGallery: (item: Omit<GalleryItem, 'id' | 'date'>) => Promise<boolean>;
+  onUpdateGallery?: (id: string, item: any) => Promise<boolean>;
   onDeleteGallery: (id: string) => Promise<boolean>;
   onVerifyMember: (id: string, status: 'verified' | 'rejected') => Promise<boolean>;
   onDeleteMember: (id: string) => Promise<boolean>;
@@ -75,16 +77,82 @@ function FileUploader({ label, value, onChange, accept = "*/*", placeholder = "�
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
 
+  const compressImage = (file: File): Promise<Blob | File> => {
+    return new Promise((resolve) => {
+      if (!file.type.startsWith('image/')) {
+        resolve(file); // Only compress images
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new window.Image();
+        img.onload = () => {
+          // Limit maximum dimensions to 1200px for lightning-fast rendering in cards
+          const maxDimension = 1200;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          } else {
+            // Keep original if it is already smaller
+            resolve(file);
+            return;
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(file);
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                // Return a new File object with compressed image
+                resolve(new File([blob], file.name.substring(0, file.name.lastIndexOf('.')) + '.jpg', { type: 'image/jpeg' }));
+              } else {
+                resolve(file);
+              }
+            },
+            'image/jpeg',
+            0.82 // Optimal compression quality
+          );
+        };
+        img.onerror = () => resolve(file);
+        img.src = event.target?.result as string;
+      };
+      reader.onerror = () => resolve(file);
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setUploading(true);
     setError('');
-    const formData = new FormData();
-    formData.append('file', file);
 
     try {
+      // Compress if it is an image
+      const processedFile = await compressImage(file);
+
+      const formData = new FormData();
+      formData.append('file', processedFile);
+
       const res = await fetch('/api/upload', {
         method: 'POST',
         body: formData
@@ -163,6 +231,7 @@ export default function AdminDashboard({
   onEditCircular,
   onDeleteCircular,
   onAddGallery,
+  onUpdateGallery,
   onDeleteGallery,
   onVerifyMember,
   onDeleteMember,
@@ -171,6 +240,7 @@ export default function AdminDashboard({
   onDeleteInvitation,
   onUpdateMember,
 }: AdminDashboardProps) {
+  const toast = useToast();
   const [activeSubTab, setActiveSubTab] = useState<'content' | 'settings' | 'members' | 'comments' | 'logs' | 'analytics' | 'activity' | 'invitations'>('content');
   const [activeModel, setActiveModel] = useState<'news' | 'blog' | 'event' | 'book' | 'circular' | 'gallery' | 'transfer'>('news');
 
@@ -195,6 +265,12 @@ export default function AdminDashboard({
   // Custom State-based Delete Confirm (bypass iframe window.confirm blocks)
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; type: string } | null>(null);
   const [dbResetConfirm, setDbResetConfirm] = useState(false);
+
+  const calculateTotalViews = () => {
+    const newsViews = db.news.reduce((acc, curr) => acc + (curr.views || 0), 0);
+    const blogViews = db.blogs.reduce((acc, curr) => acc + (curr.views || 0), 0);
+    return newsViews + blogViews;
+  };
 
   // Form states for core text fields customisation
   const [aboutForm, setAboutForm] = useState(db.settings.aboutText || '');
@@ -398,8 +474,9 @@ export default function AdminDashboard({
       const ok = await onUpdateMember(updatedMemberObj);
       if (ok) {
         setEditingMemberId(null);
+        toast.success('সদস্য প্রোফাইল সফলভাবে আপডেট করা হয়েছে।');
       } else {
-        alert('ডাটাবেজ আপডেট ব্যর্থ হয়েছে।');
+        toast.error('ডাটাবেজ আপডেট ব্যর্থ হয়েছে।');
       }
     }
   };
@@ -407,7 +484,7 @@ export default function AdminDashboard({
   const handleDirectBadgeSave = async (member: MemberRegistration) => {
     const finalBadgeText = customBadgeText.trim();
     if (!finalBadgeText) {
-      alert('সদস্য ব্যাজ খালি হতে পারে না। অনুগ্রহ করে একটি ব্যাজ টেক্সট লিখুন বা নির্বাচন করুন।');
+      toast.warning('সদস্য ব্যাজ খালি হতে পারে না। অনুগ্রহ করে একটি ব্যাজ টেক্সট লিখুন বা নির্বাচন করুন।');
       return;
     }
 
@@ -437,8 +514,9 @@ export default function AdminDashboard({
         setEditingBadgeMemberId(null);
         setSelectedBadgePreset('');
         setCustomBadgeText('');
+        toast.success('সদস্য ব্যাজ সফলভাবে পরিবর্তন করা হয়েছে।');
       } else {
-        alert('ডাটাবেজ আপডেট করতে সমস্যা হয়েছে।');
+        toast.error('ডাটাবেজ আপডেট করতে সমস্যা হয়েছে।');
       }
     }
   };
@@ -469,8 +547,10 @@ export default function AdminDashboard({
 
     if (onUpdateMember) {
       const ok = await onUpdateMember(updatedMember);
-      if (!ok) {
-        alert('ডাটাবেজ আপডেট করতে সমস্যা হয়েছে।');
+      if (ok) {
+        toast.success('পাসওয়ার্ড সফলভাবে রিসেট করা হয়েছে। নতুন পাসওয়ার্ড মেম্বার আইডি।');
+      } else {
+        toast.error('ডাটাবেজ আপডেট করতে সমস্যা হয়েছে।');
       }
     }
   };
@@ -498,8 +578,10 @@ export default function AdminDashboard({
 
     if (onUpdateMember) {
       const ok = await onUpdateMember(updatedMember);
-      if (!ok) {
-        alert('ডাটাবেজ আপডেট করতে সমস্যা হয়েছে।');
+      if (ok) {
+        toast.success('রিসেট অনুরোধ বাতিল করা হয়েছে।');
+      } else {
+        toast.error('ডাটাবেজ আপডেট করতে সমস্যা হয়েছে।');
       }
     }
   };
@@ -740,13 +822,13 @@ export default function AdminDashboard({
 
       if (successAdd) {
         await onDeleteBlog(blog.id);
-        alert('সফলভাবে ব্লগ পোস্টটিকে সংবাদপত্রে মুভ করা হয়েছে।');
+        toast.success('সফলভাবে ব্লগ পোস্টটিকে সংবাদপত্রে স্থানান্তরিত করা হয়েছে।');
       } else {
-        alert('সংবাদপত্র তালিকায় যুক্ত করতে ব্যর্থ হয়েছে।');
+        toast.error('সংবাদপত্র তালিকায় যুক্ত করতে ব্যর্থ হয়েছে।');
       }
     } catch (err) {
       console.error(err);
-      alert('সংশোধন ব্যর্থ হয়েছে।');
+      toast.error('সংশোধন ব্যর্থ হয়েছে।');
     } finally {
       setMovingId(null);
     }
@@ -781,13 +863,13 @@ export default function AdminDashboard({
 
       if (successAdd) {
         await onDeleteNews(news.id);
-        alert('সফলভাবে সংবাদ পোস্টটিকে ব্লগ/নিবন্ধ তালিকায় মুভ করা হয়েছে।');
+        toast.success('সফলভাবে সংবাদ পোস্টটিকে ব্লগ/নিবন্ধ তালিকায় স্থানান্তরিত করা হয়েছে।');
       } else {
-        alert('ব্লগ তালিকায় যুক্ত করতে ব্যর্থ হয়েছে।');
+        toast.error('ব্লগ তালিকায় যুক্ত করতে ব্যর্থ হয়েছে।');
       }
     } catch (err) {
       console.error(err);
-      alert('সংশোধন ব্যর্থ হয়েছে।');
+      toast.error('সংশোধন ব্যর্থ হয়েছে।');
     } finally {
       setMovingId(null);
     }
@@ -795,14 +877,14 @@ export default function AdminDashboard({
 
   const handleExecuteTransfer = async () => {
     if (!transferSourceId) {
-      alert('অনুগ্রহ করে একটি উৎস কন্টেন্ট নির্বাচন করুন।');
+      toast.warning('অনুগ্রহ করে একটি উৎস কন্টেন্ট নির্বাচন করুন।');
       return;
     }
 
     if (transferDirection === 'news_to_blog') {
       const newsItem = db.news.find((n) => n.id === transferSourceId);
       if (!newsItem) {
-        alert('সোর্স কন্টেন্ট খুঁজে পাওয়া যায়নি!');
+        toast.error('সোর্স কন্টেন্ট খুঁজে পাওয়া যায়নি!');
         return;
       }
       if (!confirm(`আপনি কি সত্যিই "${newsItem.title}" সংবাদটিকে ব্লগ/নিবন্ধে স্থানান্তরিত করতে চান?`)) {
@@ -828,20 +910,20 @@ export default function AdminDashboard({
           await onDeleteNews(newsItem.id);
           setTransferSourceId('');
           setTransferSearchQuery('');
-          alert('সংবাদ পোস্টটি সফলভাবে ব্লগে স্থানান্তরিত হয়েছে।');
+          toast.success('সংবাদ পোস্টটি সফলভাবে ব্লগে স্থানান্তরিত হয়েছে।');
         } else {
-          alert('ব্লগে যুক্ত করতে ব্যর্থ হয়েছে।');
+          toast.error('ব্লগে যুক্ত করতে ব্যর্থ হয়েছে।');
         }
       } catch (err) {
         console.error(err);
-        alert('স্থানান্তর ব্যর্থ হয়েছে।');
+        toast.error('স্থানান্তর ব্যর্থ হয়েছে।');
       } finally {
         setMovingId(null);
       }
     } else {
       const blogItem = db.blogs.find((b) => b.id === transferSourceId);
       if (!blogItem) {
-        alert('সোর্স কন্টেন্ট খুঁজে পাওয়া যায়নি!');
+        toast.error('সোর্স কন্টেন্ট খুঁজে পাওয়া যায়নি!');
         return;
       }
       if (!confirm(`আপনি কি সত্যিই "${blogItem.title}" ব্লগ পোস্টটিকে সংবাদপত্র তালিকায় স্থানান্তরিত করতে চান?`)) {
@@ -868,13 +950,13 @@ export default function AdminDashboard({
           await onDeleteBlog(blogItem.id);
           setTransferSourceId('');
           setTransferSearchQuery('');
-          alert('ব্লগ পোস্টটি সফলভাবে সংবাদের তালিকায় স্থানান্তরিত হয়েছে।');
+          toast.success('ব্লগ পোস্টটি সফলভাবে সংবাদের তালিকায় স্থানান্তরিত হয়েছে।');
         } else {
-          alert('সংবাদ তালিকায় যুক্ত করতে ব্যর্থ হয়েছে।');
+          toast.error('সংবাদ তালিকায় যুক্ত করতে ব্যর্থ হয়েছে।');
         }
       } catch (err) {
         console.error(err);
-        alert('স্থানান্তর ব্যর্থ হয়েছে।');
+        toast.error('স্থানান্তর ব্যর্থ হয়েছে।');
       } finally {
         setMovingId(null);
       }
@@ -1001,23 +1083,23 @@ export default function AdminDashboard({
         });
       } else if (activeModel === 'blog' && onUpdateBlog) {
         success = await onUpdateBlog(editingItem.id, {
-          ...editingItem,
           title: formTitle,
           content: formContent,
           excerpt: formExcerpt,
-          category: formCategory,
           author: formAuthor,
           image: formImage,
-          tags: tagsArray
+          tags: tagsArray,
+          comments: editingItem.comments || [],
+          views: editingItem.views || 0
         });
       } else if (activeModel === 'book' && onEditBook) {
         success = await onEditBook(editingItem.id, {
           title: formTitle,
-          author: formAuthor,
           description: formContent,
-          coverImage: formImage,
           type: formCategory as any,
-          pdfUrl: bookPdfUrl,
+          author: formAuthor,
+          coverImage: formImage,
+          pdfUrl: bookPdfUrl || undefined,
           isPrivate: formIsPrivate
         });
       } else if (activeModel === 'circular' && onEditCircular) {
@@ -1025,9 +1107,15 @@ export default function AdminDashboard({
           title: formTitle,
           content: formContent,
           category: formCategory as any,
-          pdfUrl: bookPdfUrl || undefined,
           image: formImage || undefined,
+          pdfUrl: bookPdfUrl || undefined,
           isPrivate: formIsPrivate
+        });
+      } else if (activeModel === 'gallery' && onUpdateGallery) {
+        success = await onUpdateGallery(editingItem.id, {
+          title: formTitle,
+          type: formCategory as any,
+          url: formImage
         });
       }
     } else {
@@ -1040,40 +1128,40 @@ export default function AdminDashboard({
           author: formAuthor,
           image: formImage,
           tags: tagsArray,
+          pdfUrl: bookPdfUrl || undefined,
           status: 'published',
-          isFeatured: false,
-          pdfUrl: bookPdfUrl || undefined
+          isFeatured: false
         });
       } else if (activeModel === 'blog') {
         success = await onAddBlog({
           title: formTitle,
           content: formContent,
           excerpt: formExcerpt,
-          category: formCategory,
+          category: formCategory || 'সাংগঠনিক কলাম',
           author: formAuthor,
           image: formImage,
           tags: tagsArray,
           status: 'published',
-          readingTime: Math.max(3, Math.ceil(formContent.length / 400))
+          readingTime: 3
         });
       } else if (activeModel === 'event') {
         success = await onAddEvent({
           title: formTitle,
           description: formContent,
-          date: formExcerpt || new Date().toISOString().split('T')[0],
-          time: eventTime || 'সময় নির্ধারণহীন',
-          venue: eventVenue || 'অফিস কার্যালয়',
+          date: formExcerpt,
+          time: eventTime,
+          venue: eventVenue,
           image: formImage,
           status: 'upcoming'
         });
       } else if (activeModel === 'book') {
         success = await onAddBook({
           title: formTitle,
-          author: formAuthor,
           description: formContent,
-          coverImage: formImage,
           type: formCategory as any,
-          pdfUrl: bookPdfUrl,
+          author: formAuthor,
+          coverImage: formImage,
+          pdfUrl: bookPdfUrl || undefined,
           isPrivate: formIsPrivate
         });
       } else if (activeModel === 'circular') {
@@ -1081,68 +1169,81 @@ export default function AdminDashboard({
           title: formTitle,
           content: formContent,
           category: formCategory as any,
-          pdfUrl: bookPdfUrl || undefined,
           image: formImage || undefined,
+          pdfUrl: bookPdfUrl || undefined,
           isPrivate: formIsPrivate
         });
       } else if (activeModel === 'gallery') {
         success = await onAddGallery({
           title: formTitle,
-          url: formImage,
-          type: formCategory as any
+          type: formCategory as any,
+          url: formImage
         });
       }
     }
 
-    setSubmitting(false);
     if (success) {
-      setActionSuccess(true);
-      setTimeout(() => {
-        setActionSuccess(false);
-        setShowAddModal(false);
-        setEditingItem(null);
-      }, 1500);
+      setShowAddModal(false);
+      setEditingItem(null);
+      setFormTitle('');
+      setFormContent('');
+      setFormExcerpt('');
+      setFormCategory('');
+      setFormAuthor('');
+      setFormImage('');
+      setFormTags('');
+      setBookPdfUrl('');
+      setFormIsPrivate(false);
+      setEventTime('');
+      setEventVenue('');
     }
-  };
-
-  const calculateTotalViews = () => {
-    const newsViews = db.news.reduce((acc, curr) => acc + (curr.views || 0), 0);
-    const blogViews = db.blogs.reduce((acc, curr) => acc + (curr.views || 0), 0);
-    return newsViews + blogViews;
+    setSubmitting(false);
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 font-sans">
-      
+    <div className="space-y-6">
       {/* Title & SuperAdmin banner */}
-      <div className="bg-zinc-900 text-white rounded p-6 mb-8 border border-zinc-800 flex flex-col md:flex-row md:items-center justify-between gap-5 shadow">
+      <div className="bg-zinc-900 text-white rounded-lg p-6 mb-8 border border-zinc-800 flex flex-col md:flex-row md:items-center justify-between gap-5 shadow-lg">
         <div className="flex items-center space-x-3">
           <div className="p-3 bg-rose-600 rounded">
-            <Shield className="w-8 h-8" />
+            <Shield className="w-8 h-8 text-white" />
           </div>
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold">সমাজতান্ত্রিক ছাত্র ফ্রন্ট অনলাইন সদর দপ্তর</h1>
-            <p className="text-xs text-zinc-400 font-mono mt-1">সুপার এডমিন: {userEmail}</p>
+            <h1 className="text-xl sm:text-2xl font-black font-sans tracking-tight text-white">
+              এডমিন ড্যাশবোর্ড (Admin Panel Control)
+            </h1>
+            <p className="text-xs text-zinc-400 font-mono mt-1">
+              এডমিন প্যানেল ইমেইলঃ {userEmail || 'system@authorized.org'}
+            </p>
           </div>
         </div>
 
         {/* Database Reset Option */}
         <div className="flex items-center gap-2">
           {dbResetConfirm ? (
-            <div className="flex items-center gap-1.5 bg-rose-950/40 p-1.5 border border-rose-500/30 rounded-xs">
-              <span className="text-[10px] text-rose-200 uppercase font-mono tracking-wider px-1.5">নিশ্চিত?</span>
+            <div className="flex items-center gap-1.5 bg-rose-950/40 p-1.5 border border-rose-500/30 rounded">
+              <span className="text-[10px] text-rose-300 font-bold px-1.5">রিসেট নিশ্চিত?</span>
               <button
                 onClick={async () => {
-                  await onResetDB();
                   setDbResetConfirm(false);
+                  try {
+                    const success = await onResetDB();
+                    if (success) {
+                      toast.success('ডামি ডাটাবেজ সফলভাবে রিসেট করা হয়েছে।');
+                    } else {
+                      toast.error('ডাটাবেজ রিসেট করতে ব্যর্থ হয়েছে।');
+                    }
+                  } catch (e) {
+                    toast.error('ডাটাবেজ রিসেট করতে প্রযুক্তিগত সমস্যা হয়েছে।');
+                  }
                 }}
-                className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold rounded-xs shadow transition cursor-pointer"
+                className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold rounded shadow transition cursor-pointer"
               >
                 হ্যাঁ, রিসেট
               </button>
               <button
                 onClick={() => setDbResetConfirm(false)}
-                className="px-2.5 py-1 bg-zinc-600 hover:bg-zinc-700 text-white text-[11px] font-bold rounded-xs shadow transition cursor-pointer"
+                className="px-2.5 py-1 bg-zinc-600 hover:bg-zinc-700 text-white text-[11px] font-bold rounded shadow transition cursor-pointer"
               >
                 না
               </button>
@@ -1152,7 +1253,7 @@ export default function AdminDashboard({
               onClick={() => setDbResetConfirm(true)}
               className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 hover:text-rose-500 border border-zinc-700/80 text-zinc-300 text-xs font-bold rounded shadow transition duration-200 cursor-pointer flex items-center gap-1.5"
             >
-              <RefreshCw className="w-3.5 h-3.5 animate-spin-slow" />
+              <RefreshCw className="w-3.5 h-3.5 text-zinc-400" />
               <span>ডামি ডাটাবেজ রিসেট করুন</span>
             </button>
           )}
@@ -1166,7 +1267,7 @@ export default function AdminDashboard({
         <div className="lg:col-span-3 space-y-4">
           
           {[
-            { id: 'content', label: 'কন্টেন্ট কন্ট্রোল প্যানেল', icon: Newspaper, visible: true },
+            { id: 'content', label: 'কন্টেন্ট কন্ট্রোল প্যানেল', icon: Newspaper, visible: true },
             { id: 'settings', label: 'ওয়েবসাইট লেআউট সেটিংস', icon: Settings, visible: true },
             { id: 'members', label: 'সদস্য তালিকা ও মেম্বারশিপ', icon: Users, visible: true },
             { id: 'comments', label: 'নিবন্ধ মন্তব্য মডারেশন ({count})'.replace('{count}', db.blogs.reduce((acc, curr) => acc + (curr.comments || []).length, 0).toString()), icon: MessageSquare, visible: true },
@@ -1182,7 +1283,7 @@ export default function AdminDashboard({
                 onClick={() => setActiveSubTab(tab.id as any)}
                 className={`w-full flex items-center space-x-3 px-4 py-3 text-xs md:text-sm font-bold rounded-sm border transition cursor-pointer text-left ${
                   activeSubTab === tab.id
-                    ? 'bg-rose-50 border-rose-200 text-rose-600 dark:bg-rose-950/20 dark:border-rose-900/50'
+                    ? 'bg-rose-50 border-rose-200 text-rose-600 dark:bg-rose-955/20 dark:border-rose-900/50'
                     : 'bg-white border-zinc-200 text-zinc-700 dark:bg-zinc-950 dark:border-zinc-900 dark:text-zinc-300 hover:bg-zinc-50'
                 }`}
               >
@@ -1196,7 +1297,7 @@ export default function AdminDashboard({
           <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-900 rounded p-4 pt-5 mt-6 font-mono text-[11px] text-zinc-500 space-y-2.5">
             <h4 className="font-sans font-bold text-xs text-zinc-700 dark:text-zinc-300 mb-1">ভিজিটর মেট্রিক্স</h4>
             <div className="flex justify-between border-b pb-1">
-              <span>মোট সংবাদ ভিউ:</span>
+              <span>মোট কন্টেন্ট ভিউ:</span>
               <span className="font-bold text-zinc-800 dark:text-zinc-200">{calculateTotalViews()}</span>
             </div>
             <div className="flex justify-between border-b pb-1">
@@ -1211,7 +1312,7 @@ export default function AdminDashboard({
         </div>
 
         {/* Right Columns: Main Tab Content Render (9/12 Columns) */}
-        <div className="lg:col-span-9 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded p-6 sm:p-8">
+        <div className="lg:col-span-9 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded p-4 sm:p-6 lg:p-8">
           
           {/* Content SubTab */}
           {activeSubTab === 'content' && (
@@ -1233,7 +1334,7 @@ export default function AdminDashboard({
                     onClick={() => setActiveModel(pill.key as any)}
                     className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded transition-all cursor-pointer font-semibold ${
                       activeModel === pill.key
-                        ? 'bg-rose-600 text-white'
+                        ? 'bg-rose-600 text-white font-bold'
                         : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200'
                     }`}
                   >
@@ -1244,15 +1345,15 @@ export default function AdminDashboard({
               </div>
 
               {/* Action commands bar */}
-              <div className="flex justify-between items-center bg-zinc-50 dark:bg-zinc-900 p-4 rounded border dark:border-zinc-850">
+              <div className="flex flex-col sm:flex-row gap-3 justify-between sm:items-center bg-zinc-50 dark:bg-zinc-900 p-4 rounded border dark:border-zinc-850">
                 <span className="inline-flex items-center gap-2 text-xs font-semibold text-zinc-600 dark:text-zinc-300">
                   {activeModel === 'transfer' ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 text-rose-600 animate-spin-slow" style={{ animationDuration: '4s' }} />
-                      <span>পোস্ট কনভার্টার এবং ট্রান্সফার ড্যাশবোর্ড (Post Conversion Hub)</span>
+                      <span className="leading-normal">পোস্ট কনভার্টার এবং ট্রান্সফার ড্যাশবোর্ড (Post Conversion Hub)</span>
                     </>
                   ) : (
-                    <span>সুপার এডমিন কন্টেন্ট কন্ট্রোল প্যানেল</span>
+                    <span className="leading-normal">সুপার এডমিন কন্টেন্ট কন্ট্রোল প্যানেল</span>
                   )}
                 </span>
 
@@ -1260,7 +1361,7 @@ export default function AdminDashboard({
                 {activeModel !== 'transfer' && (
                   <button
                     onClick={handleOpenAddModal}
-                    className="inline-flex items-center space-x-1 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded transition"
+                    className="inline-flex items-center justify-center space-x-1 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded transition w-full sm:w-auto cursor-pointer"
                   >
                     <PlusCircle className="w-3.5 h-3.5" />
                     <span>যুক্ত করুণ</span>
@@ -1271,75 +1372,78 @@ export default function AdminDashboard({
               {/* List grid render list */}
               <div className="space-y-3">
                 {activeModel === 'news' && db.news.map((item) => (
-                  <div key={item.id} className="p-4 border border-zinc-150 dark:border-zinc-900 rounded-sm flex justify-between items-center text-xs gap-4 hover:bg-zinc-50/50">
-                    <div className="min-w-0">
-                      <span className="text-[10px] uppercase font-mono text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded font-bold">{item.category}</span>
-                      <h4 className="font-bold text-sm text-zinc-850 mt-1 truncate">{item.title}</h4>
-                      <p className="text-[10px] text-zinc-400 font-mono mt-0.5">{item.date} • {((item.views || 0) * 10)} ভিউ (রিয়েল: {item.views || 0})</p>
+                  <div key={item.id} className="p-4 border border-zinc-150 dark:border-zinc-900 rounded-sm flex flex-col md:flex-row md:items-center justify-between text-xs gap-4 hover:bg-zinc-50/50 dark:hover:bg-zinc-900/30 transition duration-150">
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] uppercase font-mono text-rose-600 bg-rose-50 dark:bg-rose-955/45 dark:text-rose-400 px-1.5 py-0.5 rounded font-bold">{item.category}</span>
+                      </div>
+                      <h4 className="font-bold text-sm text-zinc-850 dark:text-zinc-200 leading-snug break-words whitespace-normal">{item.title}</h4>
+                      <p className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono">{item.date} • {((item.views || 0) * 10)} ভিউ (রিয়েল: {item.views || 0})</p>
                     </div>
-                    <div className="flex gap-2 shrink-0 items-center">
+                    <div className="flex flex-wrap gap-2 shrink-0 items-center w-full md:w-auto justify-start md:justify-end border-t md:border-t-0 pt-3 md:pt-0 border-zinc-100 dark:border-zinc-900">
                       <button
                         onClick={() => handleMoveNewsToBlog(item)}
                         disabled={movingId === item.id}
-                        className="p-1 px-2.5 bg-emerald-600/10 hover:bg-emerald-650/20 text-emerald-600 dark:text-emerald-400 border border-emerald-555/20 rounded text-[10px] cursor-pointer font-bold shrink-0"
+                        className="p-1 px-2.5 bg-emerald-600/10 hover:bg-emerald-650/20 text-emerald-600 dark:text-emerald-400 border border-emerald-555/20 rounded text-[10px] cursor-pointer font-bold shrink-0 min-h-[28px] flex items-center justify-center"
                       >
                         {movingId === item.id ? 'মুভ হচ্ছে...' : 'ব্লগে মুভ করুন'}
                       </button>
-                      <button onClick={() => handleOpenEditModal(item)} className="p-1 px-2 border hover:bg-zinc-100 rounded text-zinc-500 cursor-pointer">সম্পাদনা</button>
+                      <button onClick={() => handleOpenEditModal(item)} className="p-1 px-2.5 border border-zinc-250 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded text-zinc-500 dark:text-zinc-400 cursor-pointer text-[10px] min-h-[28px] flex items-center justify-center">সম্পাদনা</button>
                       {deleteConfirm?.id === item.id && deleteConfirm?.type === 'news' ? (
-                        <div className="flex items-center gap-1 bg-rose-50 dark:bg-rose-955 px-1.5 py-0.5 border border-rose-200 dark:border-rose-900 rounded-xs">
-                          <button onClick={() => { onDeleteNews(item.id); setDeleteConfirm(null); }} className="p-1 text-[10px] bg-rose-600 text-white rounded-xs font-bold cursor-pointer">হ্যাঁ</button>
-                          <button onClick={() => setDeleteConfirm(null)} className="p-1 text-[10px] bg-zinc-500 text-white rounded-xs font-bold cursor-pointer">না</button>
+                        <div className="flex items-center gap-1.5 bg-rose-50 dark:bg-rose-955/40 px-2 py-0.5 border border-rose-200 dark:border-rose-900 rounded-xs min-h-[28px]">
+                          <span className="text-[10px] text-rose-600 dark:text-rose-400 font-bold mr-1">নিশ্চিত?</span>
+                          <button onClick={() => { onDeleteNews(item.id); setDeleteConfirm(null); }} className="p-1 px-2 text-[10px] bg-rose-600 text-white rounded-xs font-bold cursor-pointer font-sans">হ্যাঁ</button>
+                          <button onClick={() => setDeleteConfirm(null)} className="p-1 px-2 bg-zinc-500 text-white rounded-xs font-bold cursor-pointer font-sans">না</button>
                         </div>
                       ) : (
-                        <button onClick={() => setDeleteConfirm({ id: item.id, type: 'news' })} className="p-1 px-2 bg-rose-50 hover:bg-rose-100 rounded text-rose-600 cursor-pointer">মুছুন</button>
+                        <button onClick={() => setDeleteConfirm({ id: item.id, type: 'news' })} className="p-1 px-2.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-400 rounded text-rose-600 cursor-pointer text-[10px] min-h-[28px] flex items-center justify-center font-sans">মুছুন</button>
                       )}
                     </div>
                   </div>
                 ))}
 
                 {activeModel === 'blog' && db.blogs.map((item) => (
-                  <div key={item.id} className="p-4 border border-zinc-150 dark:border-zinc-900 rounded-sm flex justify-between items-center text-xs gap-4 hover:bg-zinc-50/50">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap gap-1 items-center">
-                        <span className="text-[10px] uppercase font-mono text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded font-bold mr-1">{item.category}</span>
+                  <div key={item.id} className="p-4 border border-zinc-150 dark:border-zinc-900 rounded-sm flex flex-col md:flex-row md:items-center justify-between text-xs gap-4 hover:bg-zinc-50/50 dark:hover:bg-zinc-900/30 transition duration-150">
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex flex-wrap gap-1.5 items-center">
+                        <span className="text-[10px] uppercase font-mono text-emerald-600 bg-emerald-50 dark:bg-emerald-955/45 dark:text-emerald-400 px-1.5 py-0.5 rounded font-bold mr-1">{item.category}</span>
                         {item.status === 'pending' ? (
-                          <span className="text-[9px] font-bold text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-950/20 border border-amber-200/50 px-1 py-0.5 rounded">অপেক্ষমান রিভিউ (Pending Review)</span>
+                          <span className="text-[9px] font-bold text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-955/35 border border-amber-200/50 px-1.5 py-0.5 rounded">অপেক্ষমান রিভিউ (Pending Review)</span>
                         ) : item.status === 'rejected' ? (
-                          <span className="text-[9px] font-bold text-rose-700 bg-rose-50 dark:text-rose-450 dark:bg-rose-955 border border-rose-200/50 px-1 py-0.5 rounded">বাতিলকরণ ট্র্যাশ (Rejected)</span>
+                          <span className="text-[9px] font-bold text-rose-700 bg-rose-50 dark:text-rose-455 dark:bg-rose-955 border border-rose-200/50 px-1.5 py-0.5 rounded">বাতিলকরণ ট্র্যাশ (Rejected)</span>
                         ) : (
-                          <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-950/20 border border-emerald-200/50 px-1 py-0.5 rounded">পাবলিশড (Published)</span>
+                          <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-950/20 border border-emerald-200/50 px-1.5 py-0.5 rounded">পাবলিশড (Published)</span>
                         )}
                       </div>
-                      <h4 className="font-bold text-sm text-zinc-850 mt-1 truncate">{item.title}</h4>
-                      <p className="text-[10px] text-zinc-400 font-mono mt-0.5">{item.date} • লেখক: {item.author} ({item.authorEmail || 'সংগঠক'}) • ভিউ: {((item.views || 0) * 10)}</p>
+                      <h4 className="font-bold text-sm text-zinc-850 dark:text-zinc-200 leading-snug break-words whitespace-normal">{item.title}</h4>
+                      <p className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono">{item.date} • লেখক: {item.author} ({item.authorEmail || 'সংগঠক'}) • ভিউ: {((item.views || 0) * 10)}</p>
                     </div>
-                    <div className="flex gap-2 shrink-0 items-center">
+                    <div className="flex flex-wrap gap-2 shrink-0 items-center w-full md:w-auto justify-start md:justify-end border-t md:border-t-0 pt-3 md:pt-0 border-zinc-100 dark:border-zinc-900">
                       <button
                         onClick={() => handleMoveBlogToNews(item)}
                         disabled={movingId === item.id}
-                        className="p-1 px-2.5 bg-rose-600/10 hover:bg-rose-650/20 text-rose-600 dark:text-rose-450 border border-rose-555/25 rounded text-[10px] cursor-pointer font-bold shrink-0"
+                        className="p-1 px-2.5 bg-rose-600/10 hover:bg-rose-650/20 text-rose-600 dark:text-rose-450 border border-rose-555/25 rounded text-[10px] cursor-pointer font-bold shrink-0 min-h-[28px] flex items-center justify-center"
                       >
                         {movingId === item.id ? 'মুভ হচ্ছে...' : 'নিউজে মুভ করুন'}
                       </button>
 
                       <button 
                         onClick={() => handleOpenEditModal(item)} 
-                        className="p-1 px-2 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded text-zinc-500 cursor-pointer text-[10px]"
+                        className="p-1 px-2.5 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded text-zinc-500 dark:text-zinc-400 cursor-pointer text-[10px] min-h-[28px] flex items-center justify-center"
                       >
                         সম্পাদনা
                       </button>
 
                       {/* Review Buttons */}
                       {item.status === 'pending' && (
-                        <div className="flex gap-1">
+                        <div className="flex flex-wrap gap-1">
                           <button
                             onClick={async () => {
                               if (onUpdateBlog) {
                                 await onUpdateBlog(item.id, { ...item, status: 'published' });
                               }
                             }}
-                            className="p-1 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded text-[10px] cursor-pointer"
+                            className="p-1 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded text-[10px] cursor-pointer min-h-[28px] flex items-center justify-center"
                           >
                             অনুমোদন ও প্রকাশ
                           </button>
@@ -1349,7 +1453,7 @@ export default function AdminDashboard({
                                 await onUpdateBlog(item.id, { ...item, status: 'rejected' });
                               }
                             }}
-                            className="p-1 px-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded text-[10px] cursor-pointer"
+                            className="p-1 px-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded text-[10px] cursor-pointer min-h-[28px] flex items-center justify-center"
                           >
                             বাতিল
                           </button>
@@ -1363,7 +1467,7 @@ export default function AdminDashboard({
                               await onUpdateBlog(item.id, { ...item, status: 'published' });
                             }
                           }}
-                          className="p-1 px-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded text-[10px] cursor-pointer"
+                          className="p-1 px-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded text-[10px] cursor-pointer min-h-[28px] flex items-center justify-center"
                         >
                           পুনরায় অনুমোদন করুন
                         </button>
@@ -1376,59 +1480,66 @@ export default function AdminDashboard({
                               await onUpdateBlog(item.id, { ...item, status: 'pending' });
                             }
                           }}
-                          className="p-1 px-2 bg-yellow-600 hover:bg-yellow-700 text-white font-bold rounded text-[10px] cursor-pointer"
+                          className="p-1 px-2.5 bg-yellow-600 hover:bg-yellow-700 text-white font-bold rounded text-[10px] cursor-pointer min-h-[28px] flex items-center justify-center"
                         >
                           রিভিউতে পাঠান
                         </button>
                       )}
 
                       {deleteConfirm?.id === item.id && deleteConfirm?.type === 'blog' ? (
-                        <div className="flex items-center gap-1 bg-rose-50 dark:bg-rose-955 px-1.5 py-0.5 border border-rose-200 dark:border-rose-900 rounded-xs">
-                          <button onClick={() => { onDeleteBlog(item.id); setDeleteConfirm(null); }} className="p-1 text-[10px] bg-rose-600 text-white rounded-xs font-bold cursor-pointer">হ্যাঁ</button>
-                          <button onClick={() => setDeleteConfirm(null)} className="p-1 text-[10px] bg-zinc-500 text-white rounded-xs font-bold cursor-pointer">না</button>
+                        <div className="flex items-center gap-1.5 bg-rose-50 dark:bg-rose-955/40 px-2 py-0.5 border border-rose-200 dark:border-rose-900 rounded-xs min-h-[28px]">
+                          <span className="text-[10px] text-rose-600 dark:text-rose-400 font-bold mr-1">নিশ্চিত?</span>
+                          <button onClick={() => { onDeleteBlog(item.id); setDeleteConfirm(null); }} className="p-1 px-2 text-[10px] bg-rose-600 text-white rounded-xs font-bold cursor-pointer font-sans">হ্যাঁ</button>
+                          <button onClick={() => setDeleteConfirm(null)} className="p-1 px-2 bg-zinc-500 text-white rounded-xs font-bold cursor-pointer font-sans">না</button>
                         </div>
                       ) : (
-                        <button onClick={() => setDeleteConfirm({ id: item.id, type: 'blog' })} className="p-1 px-2 bg-rose-50 hover:bg-rose-100 rounded text-rose-600 cursor-pointer text-[10px]">মুছুন</button>
+                        <button onClick={() => setDeleteConfirm({ id: item.id, type: 'blog' })} className="p-1 px-2.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-400 rounded text-rose-600 cursor-pointer text-[10px] min-h-[28px] flex items-center justify-center font-sans">মুছুন</button>
                       )}
                     </div>
                   </div>
                 ))}
 
                 {activeModel === 'event' && db.events.map((item) => (
-                  <div key={item.id} className="p-4 border border-zinc-150 dark:border-zinc-900 rounded-sm flex justify-between items-center text-xs gap-4 hover:bg-zinc-50/50">
-                    <div className="min-w-0">
-                      <span className="text-[10px] uppercase font-mono text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded font-bold">{item.status}</span>
-                      <h4 className="font-bold text-sm text-zinc-850 mt-1 truncate">{item.title}</h4>
-                      <p className="text-[10px] text-zinc-400 font-mono mt-0.5">তারিখ: {item.date} • স্থান: {item.venue}</p>
+                  <div key={item.id} className="p-4 border border-zinc-150 dark:border-zinc-900 rounded-sm flex flex-col md:flex-row md:items-center justify-between text-xs gap-4 hover:bg-zinc-50/50 dark:hover:bg-zinc-900/30 transition duration-150">
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] uppercase font-mono text-rose-600 bg-rose-50 dark:bg-rose-955/45 dark:text-rose-400 px-1.5 py-0.5 rounded font-bold">{item.status}</span>
+                      </div>
+                      <h4 className="font-bold text-sm text-zinc-850 dark:text-zinc-200 leading-snug break-words whitespace-normal">{item.title}</h4>
+                      <p className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono">তারিখ: {item.date} • স্থান: {item.venue}</p>
                     </div>
-                    <div className="flex gap-2 shrink-0 items-center">
+                    <div className="flex flex-wrap gap-2 shrink-0 items-center w-full md:w-auto justify-start md:justify-end border-t md:border-t-0 pt-3 md:pt-0 border-zinc-100 dark:border-zinc-900">
                       {deleteConfirm?.id === item.id && deleteConfirm?.type === 'event' ? (
-                        <div className="flex items-center gap-1 bg-rose-50 dark:bg-rose-955 px-1.5 py-0.5 border border-rose-200 dark:border-rose-900 rounded-xs">
-                          <button onClick={() => { onDeleteEvent(item.id); setDeleteConfirm(null); }} className="p-1 text-[10px] bg-rose-600 text-white rounded-xs font-bold cursor-pointer">হ্যাঁ</button>
-                          <button onClick={() => setDeleteConfirm(null)} className="p-1 text-[10px] bg-zinc-500 text-white rounded-xs font-bold cursor-pointer">না</button>
+                        <div className="flex items-center gap-1.5 bg-rose-50 dark:bg-rose-955/40 px-2 py-0.5 border border-rose-200 dark:border-rose-900 rounded-xs min-h-[28px]">
+                          <span className="text-[10px] text-rose-600 dark:text-rose-400 font-bold mr-1">নিশ্চিত?</span>
+                          <button onClick={() => { onDeleteEvent(item.id); setDeleteConfirm(null); }} className="p-1 px-2 text-[10px] bg-rose-600 text-white rounded-xs font-bold cursor-pointer font-sans">হ্যাঁ</button>
+                          <button onClick={() => setDeleteConfirm(null)} className="p-1 px-2 bg-zinc-500 text-white rounded-xs font-bold cursor-pointer font-sans">না</button>
                         </div>
                       ) : (
-                        <button onClick={() => setDeleteConfirm({ id: item.id, type: 'event' })} className="p-1 px-2 bg-rose-50 hover:bg-rose-100 rounded text-rose-600 cursor-pointer">মুছুন</button>
+                        <button onClick={() => setDeleteConfirm({ id: item.id, type: 'event' })} className="p-1 px-2.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-400 rounded text-rose-600 cursor-pointer text-[10px] min-h-[28px] flex items-center justify-center font-sans">মুছুন</button>
                       )}
                     </div>
                   </div>
                 ))}
 
                 {activeModel === 'book' && db.books.map((item) => (
-                  <div key={item.id} className="p-4 border border-zinc-150 dark:border-zinc-900 rounded-sm flex justify-between items-center text-xs gap-4 hover:bg-zinc-50/50">
-                    <div className="min-w-0">
-                      <span className="text-[10px] uppercase font-mono text-zinc-600 bg-zinc-100 px-1.5 py-0.5 rounded font-bold">{item.type}</span>
-                      <h4 className="font-bold text-sm text-zinc-850 mt-1 truncate">{item.title}</h4>
-                      <p className="text-[10px] text-zinc-400 font-mono mt-0.5">লেখক: {item.author} • ডাউনলোড: {item.downloadCount}</p>
+                  <div key={item.id} className="p-4 border border-zinc-150 dark:border-zinc-900 rounded-sm flex flex-col md:flex-row md:items-center justify-between text-xs gap-4 hover:bg-zinc-50/50 dark:hover:bg-zinc-900/30 transition duration-150">
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] uppercase font-mono text-zinc-600 bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-400 px-1.5 py-0.5 rounded font-bold">{item.type}</span>
+                      </div>
+                      <h4 className="font-bold text-sm text-zinc-850 dark:text-zinc-200 leading-snug break-words whitespace-normal">{item.title}</h4>
+                      <p className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono">লেখক: {item.author} • ডাউনলোড: {item.downloadCount}</p>
                     </div>
-                    <div className="flex gap-2 shrink-0 items-center">
+                    <div className="flex flex-wrap gap-2 shrink-0 items-center w-full md:w-auto justify-start md:justify-end border-t md:border-t-0 pt-3 md:pt-0 border-zinc-100 dark:border-zinc-900">
                       {deleteConfirm?.id === item.id && deleteConfirm?.type === 'book' ? (
-                        <div className="flex items-center gap-1 bg-rose-50 dark:bg-rose-955 px-1.5 py-0.5 border border-rose-200 dark:border-rose-900 rounded-xs">
-                          <button onClick={() => { onDeleteBook(item.id); setDeleteConfirm(null); }} className="p-1 text-[10px] bg-rose-600 text-white rounded-xs font-bold cursor-pointer">হ্যাঁ</button>
-                          <button onClick={() => setDeleteConfirm(null)} className="p-1 text-[10px] bg-zinc-500 text-white rounded-xs font-bold cursor-pointer">না</button>
+                        <div className="flex items-center gap-1.5 bg-rose-50 dark:bg-rose-955/40 px-2 py-0.5 border border-rose-200 dark:border-rose-900 rounded-xs min-h-[28px]">
+                          <span className="text-[10px] text-rose-600 dark:text-rose-400 font-bold mr-1">নিশ্চিত?</span>
+                          <button onClick={() => { onDeleteBook(item.id); setDeleteConfirm(null); }} className="p-1 px-2 text-[10px] bg-rose-600 text-white rounded-xs font-bold cursor-pointer font-sans">হ্যাঁ</button>
+                          <button onClick={() => setDeleteConfirm(null)} className="p-1 px-2 bg-zinc-500 text-white rounded-xs font-bold cursor-pointer font-sans">না</button>
                         </div>
                       ) : (
-                        <button onClick={() => setDeleteConfirm({ id: item.id, type: 'book' })} className="p-1 px-2 bg-rose-50 hover:bg-rose-100 rounded text-rose-600 cursor-pointer">মুছুন</button>
+                        <button onClick={() => setDeleteConfirm({ id: item.id, type: 'book' })} className="p-1 px-2.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-955/40 dark:text-rose-400 rounded text-rose-600 cursor-pointer text-[10px] min-h-[28px] flex items-center justify-center font-sans">মুছুন</button>
                       )}
                     </div>
                   </div>
@@ -1456,9 +1567,29 @@ export default function AdminDashboard({
 
                 {activeModel === 'gallery' && db.gallery.map((item) => (
                   <div key={item.id} className="p-4 border border-zinc-150 dark:border-zinc-900 rounded-sm flex justify-between items-center text-xs gap-4 hover:bg-zinc-50/50">
-                    <div className="min-w-0">
-                      <span className="text-[10px] uppercase font-mono text-zinc-650 bg-zinc-100 px-1.5 py-0.5 rounded font-bold">{item.type}</span>
-                      <h4 className="font-bold text-sm text-zinc-850 mt-1 truncate">{item.title}</h4>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[10px] uppercase font-mono text-zinc-650 bg-zinc-100 dark:bg-zinc-900 px-1.5 py-0.5 rounded font-bold">{item.type}</span>
+                        <span className="text-[10px] text-rose-600 dark:text-rose-450 bg-rose-50 dark:bg-rose-955/20 px-2 py-0.5 rounded font-bold">ক্যাটাগরি পরিবর্তনঃ</span>
+                        <select
+                          value={item.type}
+                          onChange={async (e) => {
+                            if (onUpdateGallery) {
+                              await onUpdateGallery(item.id, { ...item, type: e.target.value });
+                            }
+                          }}
+                          className="px-1.5 py-0.5 text-[10px] border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-800 dark:text-zinc-200 rounded focus:outline-none cursor-pointer"
+                        >
+                          <option value="photo">ফটোগ্রাফ</option>
+                          <option value="poster">বিপ্লবী পোস্টার আর্কাইভ</option>
+                          <option value="infographic">রাজনৈতিক ইনফোগ্রাফিক্স</option>
+                          <option value="political-program">রাজনৈতিক কর্মসূচী</option>
+                          <option value="video">ভিডিও ফুটেজ</option>
+                          <option value="audio">বিপ্লবী সঙ্গীত ও সমাজ-কথা</option>
+                          <option value="gif">জিআইএফ (GIF)</option>
+                        </select>
+                      </div>
+                      <h4 className="font-bold text-sm text-zinc-850 dark:text-zinc-200 mt-1 truncate">{item.title}</h4>
                       <p className="text-[10px] text-zinc-400 font-mono mt-0.5">{item.date}</p>
                     </div>
                     <div className="flex gap-2 shrink-0 items-center">
@@ -4146,8 +4277,12 @@ export default function AdminDashboard({
                         className="w-full px-3 py-2 text-xs border border-zinc-300 dark:border-zinc-700 bg-transparent text-zinc-900 dark:text-white rounded focus:outline-none"
                       >
                         <option value="photo">ফটোগ্রাফ</option>
-                        <option value="poster">পোস্টার</option>
-                        <option value="infographic">ইনফোগ্রাফিক</option>
+                        <option value="poster">বিপ্লবী পোস্টার আর্কাইভ</option>
+                        <option value="infographic">রাজনৈতিক ইনফোগ্রাফিক্স</option>
+                        <option value="political-program">রাজনৈতিক কর্মসূচী</option>
+                        <option value="video">ভিডিও ফুটেজ</option>
+                        <option value="audio">বিপ্লবী সঙ্গীত ও সমাজ-কথা</option>
+                        <option value="gif">জিআইএফ (GIF)</option>
                       </select>
                     ) : activeModel === 'book' ? (
                       <select

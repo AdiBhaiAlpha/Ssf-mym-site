@@ -11,9 +11,10 @@ interface HeroProps {
   setCurrentTab: (tab: string) => void;
   aboutText: string;
   slogans?: string[];
+  onSelectItem?: (type: string, id: string) => void;
 }
 
-export default function Hero({ news, blogs = [], circulars, events, setCurrentTab, aboutText, slogans }: HeroProps) {
+export default function Hero({ news, blogs = [], circulars, events, setCurrentTab, aboutText, slogans, onSelectItem }: HeroProps) {
   const approvedBlogs = blogs.filter(b => !b.status || b.status === "published");
 
   // Combine news and approved blogs, then sort by date descending
@@ -75,7 +76,15 @@ export default function Hero({ news, blogs = [], circulars, events, setCurrentTa
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               className="group cursor-pointer"
-              onClick={() => setCurrentTab('news')}
+              onClick={() => {
+                if (onSelectItem) {
+                  onSelectItem(featuredArticle.itemType, featuredArticle.id);
+                } else {
+                  const paramName = featuredArticle.itemType === 'blog' ? 'blogId' : 'newsId';
+                  window.history.pushState(null, '', `?tab=news&${paramName}=${featuredArticle.id}`);
+                  setCurrentTab('news');
+                }
+              }}
             >
               <div className="relative overflow-hidden mb-4 rounded-sm border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 aspect-[16/10]">
                 <img
@@ -121,7 +130,15 @@ export default function Hero({ news, blogs = [], circulars, events, setCurrentTa
               <article 
                 key={art.id} 
                 className="group cursor-pointer"
-                onClick={() => setCurrentTab('news')}
+                onClick={() => {
+                  if (onSelectItem) {
+                    onSelectItem(art.itemType, art.id);
+                  } else {
+                    const paramName = art.itemType === 'blog' ? 'blogId' : 'newsId';
+                    window.history.pushState(null, '', `?tab=news&${paramName}=${art.id}`);
+                    setCurrentTab('news');
+                  }
+                }}
               >
                 <div className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono uppercase tracking-wider mb-1">
                   {art.category === 'campus' ? 'ক্যাম্পাস' : art.category === 'political' ? 'রাজনৈতিক' : art.category === 'organizational' ? 'সাংগঠনিক' : (art.category || 'ব্লগ')}
@@ -151,7 +168,17 @@ export default function Hero({ news, blogs = [], circulars, events, setCurrentTa
               <span>নিকটবর্তী কর্মসূচী</span>
             </h3>
             {nextEvent ? (
-              <div className="cursor-pointer" onClick={() => setCurrentTab('events')}>
+              <div 
+                className="cursor-pointer" 
+                onClick={() => {
+                  if (onSelectItem) {
+                    onSelectItem('event', nextEvent.id);
+                  } else {
+                    window.history.pushState(null, '', `?tab=events&eventId=${nextEvent.id}`);
+                    setCurrentTab('events');
+                  }
+                }}
+              >
                 <h4 className="text-sm font-bold text-zinc-800 dark:text-white hover:text-rose-600 transition">
                   {nextEvent.title}
                 </h4>
@@ -180,7 +207,14 @@ export default function Hero({ news, blogs = [], circulars, events, setCurrentTa
                 <div 
                   key={notice.id} 
                   className="cursor-pointer group"
-                  onClick={() => setCurrentTab('circulars')}
+                  onClick={() => {
+                    if (onSelectItem) {
+                      onSelectItem('circular', notice.id);
+                    } else {
+                      window.history.pushState(null, '', `?tab=circulars&circularId=${notice.id}`);
+                      setCurrentTab('circulars');
+                    }
+                  }}
                 >
                   <span className="text-[10px] text-rose-600 bg-rose-50 dark:bg-rose-950/40 dark:text-rose-300 px-1.5 py-0.5 rounded-sm font-semibold font-mono">
                     {notice.category === 'official' ? 'অফিসিয়াল' : 'নোটিশ'}

@@ -7,9 +7,10 @@ import { updateSEOMetadata } from '../lib/seo';
 interface EventsSectionProps {
   events: Event[];
   onRegisterEvent: (eventId: string, details: { name: string; email: string; phone: string; institution: string }) => Promise<EventRegistrant | null>;
+  onSelectItem?: (type: string, id: string) => void;
 }
 
-export default function EventsSection({ events, onRegisterEvent }: EventsSectionProps) {
+export default function EventsSection({ events, onRegisterEvent, onSelectItem }: EventsSectionProps) {
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   
   // Registration Dialog form inputs
@@ -413,7 +414,12 @@ export default function EventsSection({ events, onRegisterEvent }: EventsSection
                       return (
                         <div
                           key={event.id}
-                          className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded p-5 shadow-xs flex flex-col"
+                          onClick={() => {
+                            if (onSelectItem) {
+                              onSelectItem('event', event.id);
+                            }
+                          }}
+                          className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded p-5 shadow-xs flex flex-col cursor-pointer hover:border-rose-500/40 transition"
                         >
                           <div className="flex items-center justify-between mb-3">
                             <span className={`text-[9px] font-black px-2 py-0.5 rounded font-sans tracking-wide ${getStatusBadgeStyle(calculatedStatus)}`}>
@@ -609,7 +615,15 @@ export default function EventsSection({ events, onRegisterEvent }: EventsSection
                     const statusVal = getEventCalculatedStatus(event.date);
                     const totalReg = (event.registrants || []).length;
                     return (
-                      <div key={event.id} className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded p-5 flex flex-col justify-between shadow-xs">
+                      <div 
+                        key={event.id} 
+                        onClick={() => {
+                          if (onSelectItem) {
+                            onSelectItem('event', event.id);
+                          }
+                        }}
+                        className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded p-5 flex flex-col justify-between shadow-xs cursor-pointer hover:border-rose-500/40 transition"
+                      >
                         <div>
                           <div className="flex items-center justify-between mb-3.5">
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${getStatusBadgeStyle(statusVal)}`}>
@@ -683,7 +697,12 @@ export default function EventsSection({ events, onRegisterEvent }: EventsSection
               return (
                 <div
                   key={event.id}
-                  className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 hover:border-rose-450/30 rounded-md p-6 transition flex flex-col shadow-xs"
+                  onClick={() => {
+                    if (onSelectItem) {
+                      onSelectItem('event', event.id);
+                    }
+                  }}
+                  className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 hover:border-rose-450/30 rounded-md p-6 transition flex flex-col shadow-xs cursor-pointer hover:border-rose-500/40"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                     <span className={`text-[10px] font-black px-2.5 py-0.5 rounded font-sans uppercase tracking-wide ${getStatusBadgeStyle(statusVal)}`}>

@@ -13,6 +13,7 @@ interface NewsBlogSectionProps {
   onRefresh: () => void;
   globalSearchQuery: string;
   setGlobalSearchQuery: (query: string) => void;
+  onSelectItem?: (type: string, id: string) => void;
 }
 
 export default function NewsBlogSection({
@@ -23,6 +24,7 @@ export default function NewsBlogSection({
   onRefresh,
   globalSearchQuery,
   setGlobalSearchQuery,
+  onSelectItem,
 }: NewsBlogSectionProps) {
   const [activeTab, setActiveTab] = useState<'all' | 'news' | 'blogs'>('all');
   const searchQuery = globalSearchQuery;
@@ -66,6 +68,15 @@ export default function NewsBlogSection({
         clearTimeout(t);
       };
     }
+  }, [selectedNews, selectedBlog]);
+
+  // Scroll to top of the window when a news item or blog post is selected or deselected
+  useEffect(() => {
+    window.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: 'instant'
+    });
   }, [selectedNews, selectedBlog]);
 
   // Dynamic SEO metadata update when a news or blog post is selected
@@ -649,7 +660,7 @@ export default function NewsBlogSection({
             </div>
 
             {/* Selector tabs */}
-            <div className="flex border-b border-zinc-200 dark:border-zinc-800">
+            <div className="flex flex-wrap gap-1 border-b border-zinc-200 dark:border-zinc-800">
               <button
                 onClick={() => { setActiveTab('all'); setNewsCategoryFilter('all'); }}
                 className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
@@ -711,19 +722,23 @@ export default function NewsBlogSection({
                     layout
                     key={art.id}
                     onClick={() => {
-                      const newViews = (art.views || 0) + 1;
-                      art.views = newViews;
-                      setSelectedNews(art);
-                      
-                      // Serverless dynamic fallback
-                      saveFirestoreDoc('news', art.id, { ...art, views: newViews })
-                        .then(() => onRefresh?.())
-                        .catch(err => {
-                          console.error('Firestore view tracking failed, trying api fallback:', err);
-                          fetch(`/api/news/${art.id}/view`, { method: 'POST' })
-                            .then(() => onRefresh?.())
-                            .catch(e => console.error(e));
-                        });
+                      if (onSelectItem) {
+                        onSelectItem('news', art.id);
+                      } else {
+                        const newViews = (art.views || 0) + 1;
+                        art.views = newViews;
+                        setSelectedNews(art);
+                        
+                        // Serverless dynamic fallback
+                        saveFirestoreDoc('news', art.id, { ...art, views: newViews })
+                          .then(() => onRefresh?.())
+                          .catch(err => {
+                            console.error('Firestore view tracking failed, trying api fallback:', err);
+                            fetch(`/api/news/${art.id}/view`, { method: 'POST' })
+                              .then(() => onRefresh?.())
+                              .catch(e => console.error(e));
+                          });
+                      }
                     }}
                     className="group flex flex-col bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded-sm overflow-hidden hover:border-rose-600/50 transition duration-300 cursor-pointer shadow-xs"
                   >
@@ -812,19 +827,23 @@ export default function NewsBlogSection({
                     layout
                     key={post.id}
                     onClick={() => {
-                      const newViews = (post.views || 0) + 1;
-                      post.views = newViews;
-                      setSelectedBlog(post);
-                      
-                      // Serverless dynamic fallback
-                      saveFirestoreDoc('blogs', post.id, { ...post, views: newViews })
-                        .then(() => onRefresh?.())
-                        .catch(err => {
-                          console.error('Firestore view tracking failed, trying api fallback:', err);
-                          fetch(`/api/blogs/${post.id}/view`, { method: 'POST' })
-                            .then(() => onRefresh?.())
-                            .catch(e => console.error(e));
-                        });
+                      if (onSelectItem) {
+                        onSelectItem('blog', post.id);
+                      } else {
+                        const newViews = (post.views || 0) + 1;
+                        post.views = newViews;
+                        setSelectedBlog(post);
+                        
+                        // Serverless dynamic fallback
+                        saveFirestoreDoc('blogs', post.id, { ...post, views: newViews })
+                          .then(() => onRefresh?.())
+                          .catch(err => {
+                            console.error('Firestore view tracking failed, trying api fallback:', err);
+                            fetch(`/api/blogs/${post.id}/view`, { method: 'POST' })
+                              .then(() => onRefresh?.())
+                              .catch(e => console.error(e));
+                          });
+                      }
                     }}
                     className="group flex flex-col bg-white dark:bg-zinc-950 border border-zinc-100 dark:border-zinc-900 rounded-sm overflow-hidden hover:border-emerald-600/40 transition duration-300 cursor-pointer shadow-xs"
                   >

@@ -21,11 +21,19 @@ import { Volume2, RefreshCw, Smartphone, Monitor, ChevronRight } from 'lucide-re
 import { fetchFirestoreDatabase, saveFirestoreDoc, deleteFirestoreDoc, resetFirestoreDatabase } from './firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { updateSEOMetadata } from './lib/seo';
+import { useToast } from './components/Toast';
+import ContentDetails from './components/ContentDetails';
+import DebugConsole from './components/DebugConsole';
+import LiveExportDebugger from './components/LiveExportDebugger';
 
 export default function App() {
+  const toast = useToast();
   const [currentTab, setCurrentTab] = useState('home');
   const [darkMode, setDarkMode] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+
+  // Active Details state for clicking on any card item
+  const [activeDetails, setActiveDetails] = useState<{ type: string; id: string } | null>(null);
 
   // Core Dynamic State
   const [db, setDb] = useState<AppDatabase | null>(null);
@@ -40,6 +48,9 @@ export default function App() {
 
   // Verification State triggered by QR
   const [verifyMemberId, setVerifyMemberId] = useState<string | null>(null);
+
+  // Developer Debug Console State
+  const [showDebugConsole, setShowDebugConsole] = useState(false);
 
   // Sync online/offline listener
   useEffect(() => {
@@ -123,14 +134,48 @@ export default function App() {
       setUserEmail(savedEmail);
     }
 
-    // Check query parameters to deep-link to tabs
+    // Check query parameters to deep-link to tabs or details
     const params = new URLSearchParams(window.location.search);
     let urlTab = params.get('tab');
+    
+    const newsId = params.get('newsId') || params.get('newsid');
+    const blogId = params.get('blogId') || params.get('blogid');
+    const bookId = params.get('bookId') || params.get('bookid');
+    const circularId = params.get('circularId') || params.get('circularid') || params.get('noticeId') || params.get('noticeid');
+    const eventId = params.get('eventId') || params.get('eventid');
+    const mediaId = params.get('mediaId') || params.get('mediaid');
+
+    if (newsId) {
+      setActiveDetails({ type: 'news', id: newsId });
+      urlTab = 'news';
+    } else if (blogId) {
+      setActiveDetails({ type: 'blog', id: blogId });
+      urlTab = 'news';
+    } else if (bookId) {
+      setActiveDetails({ type: 'publication', id: bookId });
+      urlTab = 'books';
+    } else if (circularId) {
+      setActiveDetails({ type: 'circular', id: circularId });
+      urlTab = 'circulars';
+    } else if (eventId) {
+      setActiveDetails({ type: 'event', id: eventId });
+      urlTab = 'events';
+    } else if (mediaId) {
+      setActiveDetails({ type: 'media', id: mediaId });
+      urlTab = 'media';
+    }
+
     if (!urlTab) {
-      if (params.get('newsId') || params.get('blogId')) {
+      if (newsId || blogId) {
         urlTab = 'news';
-      } else if (params.get('bookId')) {
+      } else if (bookId) {
         urlTab = 'books';
+      } else if (circularId) {
+        urlTab = 'circulars';
+      } else if (eventId) {
+        urlTab = 'events';
+      } else if (mediaId) {
+        urlTab = 'media';
       }
     }
     if (urlTab && ['home', 'news', 'books', 'events', 'circulars', 'about', 'join', 'portal', 'media', 'contact'].includes(urlTab)) {
@@ -213,6 +258,137 @@ export default function App() {
       localStorage.setItem('front-theme', 'light');
     }
   }, [darkMode]);
+
+  // Disable automatic browser scroll restoration on history navigation
+  useEffect(() => {
+    if ('scrollRestoration' in window.history) {
+      window.history.scrollRestoration = 'manual';
+    }
+  }, []);
+
+  // Listen to popstate event (browser back/forward button clicks)
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      let urlTab = params.get('tab');
+      
+      const newsId = params.get('newsId') || params.get('newsid');
+      const blogId = params.get('blogId') || params.get('blogid');
+      const bookId = params.get('bookId') || params.get('bookid');
+      const circularId = params.get('circularId') || params.get('circularid') || params.get('noticeId') || params.get('noticeid');
+      const eventId = params.get('eventId') || params.get('eventid');
+      const mediaId = params.get('mediaId') || params.get('mediaid');
+
+      if (newsId) setActiveDetails({ type: 'news', id: newsId });
+      else if (blogId) setActiveDetails({ type: 'blog', id: blogId });
+      else if (bookId) setActiveDetails({ type: 'publication', id: bookId });
+      else if (circularId) setActiveDetails({ type: 'circular', id: circularId });
+      else if (eventId) setActiveDetails({ type: 'event', id: eventId });
+      else if (mediaId) setActiveDetails({ type: 'media', id: mediaId });
+      else setActiveDetails(null);
+
+      if (!urlTab) {
+        if (newsId || blogId) {
+          urlTab = 'news';
+        } else if (bookId) {
+          urlTab = 'books';
+        } else if (circularId) {
+          urlTab = 'circulars';
+        } else if (eventId) {
+          urlTab = 'events';
+        } else if (mediaId) {
+          urlTab = 'media';
+        } else {
+          urlTab = 'home';
+        }
+      }
+      if (urlTab && ['home', 'news', 'books', 'events', 'circulars', 'about', 'join', 'portal', 'media', 'contact', 'leadership', 'membership', 'member-portal'].includes(urlTab)) {
+        setCurrentTab(urlTab);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
+
+  // Synchronize browser URL query with activeDetails and currentTab state
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlTab = params.get('tab');
+    
+    if (activeDetails) {
+      params.delete('newsId');
+      params.delete('blogId');
+      params.delete('bookId');
+      params.delete('circularId');
+      params.delete('eventId');
+      params.delete('noticeId');
+      params.delete('mediaId');
+
+      if (activeDetails.type === 'news') params.set('newsId', activeDetails.id);
+      else if (activeDetails.type === 'blog') params.set('blogId', activeDetails.id);
+      else if (activeDetails.type === 'publication') params.set('bookId', activeDetails.id);
+      else if (activeDetails.type === 'circular') params.set('circularId', activeDetails.id);
+      else if (activeDetails.type === 'event') params.set('eventId', activeDetails.id);
+      else if (activeDetails.type === 'media') params.set('mediaId', activeDetails.id);
+
+      let alignedTab = currentTab;
+      if (activeDetails.type === 'news') alignedTab = 'news';
+      else if (activeDetails.type === 'blog') alignedTab = 'news';
+      else if (activeDetails.type === 'publication') alignedTab = 'books';
+      else if (activeDetails.type === 'circular') alignedTab = 'circulars';
+      else if (activeDetails.type === 'event') alignedTab = 'events';
+      else if (activeDetails.type === 'media') alignedTab = 'media';
+
+      if (alignedTab !== currentTab) {
+        setCurrentTab(alignedTab);
+      }
+      params.set('tab', alignedTab);
+      
+      const newUrl = `?${params.toString()}`;
+      // Use pushState so users can use the back button to close detail view
+      window.history.pushState(null, '', newUrl);
+    } else {
+      // Clear IDs if details is closed
+      params.delete('newsId');
+      params.delete('blogId');
+      params.delete('bookId');
+      params.delete('circularId');
+      params.delete('eventId');
+      params.delete('noticeId');
+      params.delete('mediaId');
+      params.set('tab', currentTab);
+      
+      const newUrl = `?${params.toString()}`;
+      if (urlTab !== currentTab) {
+        window.history.pushState(null, '', newUrl);
+      } else {
+        window.history.replaceState(null, '', newUrl);
+      }
+    }
+  }, [activeDetails, currentTab]);
+
+  // Whenever currentTab changes, scroll the window to the very top.
+  // This guarantees that all sub-pages, listing pages, detailed views, and tab-level navigations start from top: 0.
+  useEffect(() => {
+    const performScrollToTop = () => {
+      window.scrollTo({
+        top: 0,
+        left: 0,
+        behavior: 'instant' as ScrollBehavior
+      });
+    };
+
+    // Execute immediately on state changes
+    performScrollToTop();
+
+    // In case the page rendering requires a few frames (async content rendering, virtual DOM mounting),
+    // schedule a secondary safe scroll reset.
+    const timer = setTimeout(performScrollToTop, 50);
+    return () => clearTimeout(timer);
+  }, [currentTab]);
 
   // Log visitor activity on page/tab changes
   useEffect(() => {
@@ -340,7 +516,7 @@ export default function App() {
     if (matched) {
       setVerifyMemberId(matched.id);
     } else {
-      alert(`দুঃখিত, '${memberCode}' এই মেম্বার কোডের বিপরীতে আমাদের ডাটাবেজে কোনো নিবন্ধিত সদস্য প্রোফাইল পাওয়া যায়নি।`);
+      toast.error(`দুঃখিত, '${memberCode}' এই মেম্বার কোডের বিপরীতে আমাদের ডাটাবেজে কোনো নিবন্ধিত সদস্য প্রোফাইল পাওয়া যায়নি।`);
     }
   };
 
@@ -993,6 +1169,30 @@ export default function App() {
     return false;
   };
 
+  const handleUpdateGallery = async (id: string, updatedItem: any) => {
+    if (!userEmail) return false;
+    try {
+      await saveFirestoreDoc('gallery', id, { ...updatedItem, id });
+
+      // Log
+      const logId = 'log_' + Date.now();
+      const logData = {
+        id: logId,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        action: 'মিডিয়া গ্যালারি আপডেট',
+        user: userEmail,
+        details: `"${updatedItem.title}" গ্যালারি কন্টেন্টটির তথ্য/ক্যাটাগরি আপডেট করা হয়েছে।`
+      };
+      await saveFirestoreDoc('logs', logId, logData);
+
+      await fetchDatabase();
+      return true;
+    } catch (e) {
+      console.error(e);
+    }
+    return false;
+  };
+
   const handleRegisterMember = async (registration: any) => {
     try {
       const id = 'member_' + Date.now();
@@ -1097,6 +1297,20 @@ export default function App() {
       m => m.email?.toLowerCase() === userEmail?.toLowerCase() && m.status === 'verified'
     );
 
+    if (activeDetails) {
+      return (
+        <ContentDetails
+          item={activeDetails}
+          db={db}
+          onClose={() => setActiveDetails(null)}
+          onRefresh={() => fetchDatabase(true)}
+          userEmail={userEmail}
+          onSelectItem={(type, id) => setActiveDetails({ type, id })}
+          isVerifiedMember={isVerifiedMember}
+        />
+      );
+    }
+
     switch (currentTab) {
       case 'home':
         return (
@@ -1108,6 +1322,7 @@ export default function App() {
             setCurrentTab={setCurrentTab}
             aboutText={settings.aboutText}
             slogans={settings.slogans}
+            onSelectItem={(type, id) => setActiveDetails({ type, id })}
           />
         );
       case 'about':
@@ -1124,6 +1339,7 @@ export default function App() {
             onRefresh={() => fetchDatabase(true)}
             globalSearchQuery={globalSearchQuery}
             setGlobalSearchQuery={setGlobalSearchQuery}
+            onSelectItem={(type, id) => setActiveDetails({ type, id })}
           />
         );
       case 'events':
@@ -1131,6 +1347,7 @@ export default function App() {
           <EventsSection 
             events={getFilteredEvents()} 
             onRegisterEvent={handleRegisterEvent} 
+            onSelectItem={(type, id) => setActiveDetails({ type, id })}
           />
         ) : (
           <div className="py-16 text-center text-zinc-500 text-xs sm:text-sm">এই সেকশনটি এডমিন কর্তৃক হাইড করা আছে।</div>
@@ -1141,6 +1358,7 @@ export default function App() {
             books={db.books} 
             onDownloadBook={handleDownloadBook} 
             isVerifiedMember={isVerifiedMember}
+            onSelectItem={(type, id) => setActiveDetails({ type, id })}
           />
         ) : (
           <div className="py-16 text-center text-zinc-500 text-xs sm:text-sm">প্রকাশনা সেকশনটি সাময়িকভাবে নিষ্ক্রিয় করা আছে।</div>
@@ -1150,6 +1368,7 @@ export default function App() {
           <CircularsSection 
             circulars={db.circulars} 
             isVerifiedMember={isVerifiedMember}
+            onSelectItem={(type, id) => setActiveDetails({ type, id })}
           />
         ) : (
           <div className="py-16 text-center text-zinc-500 text-xs sm:text-sm">সার্কুলার বোর্ড সাময়িকভাবে নিষ্ক্রিয় করা আছে।</div>
@@ -1168,6 +1387,7 @@ export default function App() {
         return settings.showGallery ? (
           <MediaCenter 
             gallery={db.gallery} 
+            onSelectItem={(type, id) => setActiveDetails({ type, id })}
           />
         ) : (
           <div className="py-16 text-center text-zinc-500 text-xs sm:text-sm">মিডিয়া সেন্টার সাময়িকভাবে নিষ্ক্রিয় করা আছে।</div>
@@ -1190,6 +1410,7 @@ export default function App() {
               settings={db.settings}
               blogs={db.blogs || []}
               onAddBlog={handleAddBlog}
+              setCurrentTab={setCurrentTab}
             />
           ) : (
             <PortalAuth
@@ -1222,6 +1443,7 @@ export default function App() {
             onEditCircular={handleEditCircular}
             onDeleteCircular={handleDeleteCircular}
             onAddGallery={handleAddGallery}
+            onUpdateGallery={handleUpdateGallery}
             onDeleteGallery={handleDeleteGallery}
             onVerifyMember={handleVerifyMember}
             onDeleteMember={handleDeleteMember}
@@ -1264,6 +1486,8 @@ export default function App() {
         invitations={db ? db.invitations : []}
         onInviteAction={handleInviteAction}
         onRegisterMember={handleRegisterMember}
+        showDebugConsole={showDebugConsole}
+        setShowDebugConsole={setShowDebugConsole}
       />
 
       {/* Breaking news alerts ticker matching dynamic options */}
@@ -1411,6 +1635,12 @@ export default function App() {
           />
         )}
       </AnimatePresence>
+
+      {/* Developer Debug Console */}
+      <DebugConsole isOpen={showDebugConsole} setIsOpen={setShowDebugConsole} />
+
+      {/* Reusable Live Export Debug Window */}
+      <LiveExportDebugger />
 
     </div>
   );

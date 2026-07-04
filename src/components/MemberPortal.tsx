@@ -1,9 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Award, User, Phone, Mail, MapPin, Calendar, LogOut, CheckCircle2, ShieldCheck, FileText, BookOpen, Clock, Smartphone, Download, Sparkles, Flame, Camera, Link, Check, RefreshCw, Pencil, History, Save, Undo, Eye, X, Heart, Plus, Send } from 'lucide-react';
 import { MemberRegistration, News, Circular, Book, WebSettings, Blog, getMemberBadgeText } from '../types';
 import { motion } from 'motion/react';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
+import { useToast } from './Toast';
+import { MemberCardRenderer, ValidationError, ValidationErrorDetail } from '../lib/canvas-renderer/MemberCardRenderer';
+import { Exporter } from '../lib/canvas-renderer/Exporter';
+import { Downloader } from '../lib/canvas-renderer/Downloader';
+import { CanvasTaintInspector } from '../lib/canvas-renderer/CanvasTaintInspector';
+import { LiveExportStore } from '../lib/debug/LiveExportStore';
+import QRCode from 'qrcode';
 
 interface MemberPortalProps {
   member: MemberRegistration;
@@ -15,9 +21,11 @@ interface MemberPortalProps {
   settings?: WebSettings;
   blogs?: Blog[];
   onAddBlog?: (post: Omit<Blog, 'id' | 'views' | 'comments' | 'date'>) => Promise<boolean>;
+  setCurrentTab?: (tab: string) => void;
 }
 
-export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMember, circulars = [], books = [], settings, blogs = [], onAddBlog }: MemberPortalProps) {
+export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMember, circulars = [], books = [], settings, blogs = [], onAddBlog, setCurrentTab }: MemberPortalProps) {
+  const toast = useToast();
   const memberId = `SSF-MYM-${member.id.substring(member.id.length - 5).toUpperCase()}`;
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -25,6 +33,21 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
   const [photoUrlInput, setPhotoUrlInput] = useState('');
   const [loadingUrl, setLoadingUrl] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [preloadedImages, setPreloadedImages] = useState<{ [key: string]: string }>({});
+
+  // Fallback states for download pipeline
+  const [showFallbackModal, setShowFallbackModal] = useState(false);
+  const [fallbackImageUrl, setFallbackImageUrl] = useState<string | null>(null);
+  const [fallbackFilename, setFallbackFilename] = useState('');
+  const [fallbackFormat, setFallbackFormat] = useState<'png' | 'pdf'>('png');
+  const [fallbackBlob, setFallbackBlob] = useState<Blob | null>(null);
+  const [fallbackPdf, setFallbackPdf] = useState<any>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [downloadStepLogs, setDownloadStepLogs] = useState<string[]>([]);
+  const [validationErrors, setValidationErrors] = useState<ValidationErrorDetail[] | null>(null);
+  const [diagnosticLogs, setDiagnosticLogs] = useState<string[]>([]);
+  const [isDiagnosing, setIsDiagnosing] = useState(false);
+  const [showDiagnosticsPanel, setShowDiagnosticsPanel] = useState(false);
   const [useProxy, setUseProxy] = useState(() => {
     if (typeof window !== 'undefined') {
       const isSandbox = window.location.hostname.includes('localhost') || 
@@ -34,6 +57,87 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
     }
     return true;
   });
+
+  const toDataURL = async (url: string): Promise<string> => {
+    if (!url) return '';
+    if (url.startsWith('data:')) return url;
+    
+    const isExternal = url.startsWith('http://') || url.startsWith('https://');
+    const urlsToTry = isExternal
+      ? [`/api/proxy-image?url=${encodeURIComponent(url)}`, url]
+      : [url];
+      
+    for (const tryUrl of urlsToTry) {
+      try {
+        const res = await fetch(tryUrl, { method: 'GET', credentials: 'omit' });
+        if (res.ok) {
+          const blob = await res.blob();
+          return await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = () => reject(new Error('FileReader error'));
+            reader.readAsDataURL(blob);
+          });
+        }
+      } catch (e) {
+        console.warn(`toDataURL failed to fetch from ${tryUrl}:`, e);
+      }
+    }
+    return url;
+  };
+
+  const prepareExportImages = async () => {
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(`${window.location.protocol}//${window.location.host}/?verify-member=${member.id}`)}`;
+    
+    const imagesToLoad = [
+      { key: 'logo1', url: 'https://i.ibb.co.com/F4MKM3R2/20260527-055637.png' },
+      { key: 'logo2', url: 'https://i.ibb.co/R4BCPZ0B/20250130-143124.png' },
+      member.photoUrl ? { key: 'profile', url: member.photoUrl } : null,
+      settings?.idSignerSignatureUrl ? { key: 'signature', url: settings.idSignerSignatureUrl } : null,
+      { key: 'qrCode', url: qrUrl }
+    ].filter(Boolean) as { key: string; url: string }[];
+
+    const loaded: { [key: string]: string } = {};
+    await Promise.all(
+      imagesToLoad.map(async (item) => {
+        try {
+          const base64 = await toDataURL(item.url);
+          loaded[item.key] = base64;
+        } catch (e) {
+          console.error(`Failed to preload ${item.key}:`, e);
+          loaded[item.key] = item.url;
+        }
+      })
+    );
+    return loaded;
+  };
+
+  const runExportWorkflow = async (callback: (sandboxEl: HTMLElement) => Promise<void>) => {
+    try {
+      setIsExporting(true);
+      
+      const loaded = await prepareExportImages();
+      setPreloadedImages(loaded);
+      
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+        await document.fonts.ready;
+      }
+      
+      const sandboxEl = document.getElementById('export-card-sandbox');
+      if (!sandboxEl) {
+        throw new Error('Canvas elements missing');
+      }
+      
+      await callback(sandboxEl);
+    } catch (err: any) {
+      console.error('Export error:', err);
+      toast.error('দুঃখিত, ফাইল ডাউনলোডের সময় কোনো সমস্যা হয়েছে। দয়া করে পুনরায় চেষ্টা করুন।');
+    } finally {
+      setIsExporting(false);
+      setPreloadedImages({});
+    }
+  };
 
   useEffect(() => {
     if (!useProxy) return;
@@ -196,13 +300,16 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
         setIsEditing(false);
         if (onRefresh) await onRefresh();
       } else {
-        alert('তথ্য সংশোধন করতে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।');
+        toast.error('তথ্য সংশোধন করতে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।');
       }
     }
   };
 
   const getProxiedUrl = (url: string | undefined) => {
     if (!url) return '';
+    if (url.startsWith('http') && !url.includes('api/proxy-image') && !url.includes(window.location.host)) {
+      return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+    }
     return url;
   };
 
@@ -269,7 +376,7 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
       window.print();
     } catch (err) {
       console.error('Print trigger error:', err);
-      alert('সরাসরি প্রিন্ট করার সময় কোনো সমস্যা হয়েছে। অনুগ্রহ করে আপনার ব্রাউজারের প্রিন্ট সেটিংস চেক করুন।');
+      toast.error('সরাসরি প্রিন্ট করার সময় কোনো সমস্যা হয়েছে। অনুগ্রহ করে আপনার ব্রাউজারের প্রিন্ট সেটিংস চেক করুন।');
     }
   };
 
@@ -280,65 +387,494 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
     return 'বিপ্লবী লাল সালাম কমরেড';
   };
 
-  const downloadPNG = async () => {
-    const cardEl = document.getElementById('member-identity-card');
-    if (!cardEl) return;
+  const addLog = (msg: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const formattedMsg = `[${timestamp}] ${msg}`;
+    console.log(formattedMsg);
+    setDownloadStepLogs(prev => [...prev, formattedMsg]);
+  };
+
+  const runDiagnostics = async () => {
+    setIsDiagnosing(true);
+    setDiagnosticLogs([]);
+    setShowDiagnosticsPanel(true);
+    const logs: string[] = [];
+    const addDiagLog = (msg: string) => {
+      const timestamp = new Date().toLocaleTimeString();
+      const formatted = `[${timestamp}] ${msg}`;
+      logs.push(formatted);
+      setDiagnosticLogs([...logs]);
+    };
+
+    addDiagLog('🔬 ই-কার্ড রেন্ডারিং এবং নেটওয়ার্ক ডায়াগনস্টিকস রান করা হচ্ছে...');
+    
     try {
-      setIsExporting(true);
-      await new Promise((resolve) => setTimeout(resolve, 150));
-      const canvas = await html2canvas(cardEl, {
-        scale: 3, // High quality output
-        useCORS: true,
-        backgroundColor: '#09090b' // Dark matching BG
-      });
-      const link = document.createElement('a');
-      link.download = `Member_Card_${member.name}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-    } catch (err) {
-      console.error('PNG download error:', err);
-      alert('দুঃখিত, ইমেজ ডাউনলোডের সময় কোনো সমস্যা হয়েছে। দয়া করে পুনরায় চেষ্টা করুন।');
+      // 1. Check Browser API support
+      addDiagLog('১. ব্রাউজার সামঞ্জস্যতা স্ক্যান করা হচ্ছে...');
+      const hasImageBitmap = typeof window.createImageBitmap === 'function';
+      const hasOffscreen = typeof window.OffscreenCanvas !== 'undefined';
+      const hasBlob = typeof HTMLCanvasElement.prototype.toBlob === 'function';
+      
+      addDiagLog(`- createImageBitmap সাপোর্ট: ${hasImageBitmap ? '✅ সচল' : '❌ অচল'}`);
+      addDiagLog(`- OffscreenCanvas সাপোর্ট: ${hasOffscreen ? '✅ সচল' : '❌ অচল'}`);
+      addDiagLog(`- Canvas.toBlob সাপোর্ট: ${hasBlob ? '✅ সচল' : '❌ অচল'}`);
+      addDiagLog(`- ব্রাউজার ইউজার এজেন্ট: ${navigator.userAgent}`);
+
+      // 2. Main Logo Direct & Proxy check
+      addDiagLog('২. "মূল লোগো" সোর্স নেটওয়ার্ক স্ক্যান...');
+      const logo1Url = 'https://i.ibb.co.com/F4MKM3R2/20260527-055637.png';
+      try {
+        addDiagLog(`- সরাসরি কানেকশন চেষ্টা করা হচ্ছে...`);
+        const resDirect = await fetch(logo1Url, { mode: 'cors' });
+        addDiagLog(`  - সরাসরি কানেকশন: ${resDirect.ok ? '✅ সফল' : `❌ ব্যর্থ (HTTP ${resDirect.status})`}`);
+      } catch (directErr: any) {
+        addDiagLog(`  - সরাসরি কানেকশন: ❌ অবরুদ্ধ (CORS policy বা ব্রাউজার সিকিউরিটি ব্লকিং) - এটি প্রত্যাশিত`);
+      }
+      try {
+        addDiagLog(`- সিকিউর ইমেজ প্রক্সির মাধ্যমে রিকোয়েস্ট পাঠানো হচ্ছে...`);
+        const resProxy = await fetch(`/api/proxy-image?url=${encodeURIComponent(logo1Url)}`);
+        addDiagLog(`  - প্রক্সি রেসপন্স: ${resProxy.ok ? '✅ সফল' : `❌ ব্যর্থ (HTTP ${resProxy.status})`}`);
+        if (resProxy.ok) {
+          const blob = await resProxy.blob();
+          addDiagLog(`  - প্রক্সি ডাউনলোড সম্পন্ন। ফাইলের সাইজ: ${blob.size} বাইটস, টাইপ: ${blob.type}`);
+        }
+      } catch (proxyErr: any) {
+        addDiagLog(`  - প্রক্সি রিকোয়েস্ট চরম ব্যর্থ: ${proxyErr.message || proxyErr}`);
+      }
+
+      // 3. Banner Text Logo Check
+      addDiagLog('৩. "ব্যানার টেক্সট লোগো" সোর্স নেটওয়ার্ক স্ক্যান...');
+      const logo2Url = 'https://i.ibb.co/R4BCPZ0B/20250130-143124.png';
+      try {
+        addDiagLog(`- সিকিউর ইমেজ প্রক্সির মাধ্যমে রিকোয়েস্ট পাঠানো হচ্ছে...`);
+        const resProxy = await fetch(`/api/proxy-image?url=${encodeURIComponent(logo2Url)}`);
+        addDiagLog(`  - প্রক্সি রেসপন্স: ${resProxy.ok ? '✅ সফল' : `❌ ব্যর্থ (HTTP ${resProxy.status})`}`);
+        if (resProxy.ok) {
+          const blob = await resProxy.blob();
+          addDiagLog(`  - প্রক্সি ডাউনলোড সম্পন্ন। ফাইলের সাইজ: ${blob.size} বাইটস`);
+        }
+      } catch (proxyErr: any) {
+        addDiagLog(`  - প্রক্সি রিকোয়েস্ট চরম ব্যর্থ: ${proxyErr.message || proxyErr}`);
+      }
+
+      // 4. Member Profile Photo Check
+      if (member.photoUrl) {
+        addDiagLog(`৪. "মেম্বার প্রোফাইল ছবি" সোর্স নেটওয়ার্ক স্ক্যান... URL: ${member.photoUrl}`);
+        try {
+          addDiagLog(`- সিকিউর ইমেজ প্রক্সির মাধ্যমে রিকোয়েস্ট পাঠানো হচ্ছে...`);
+          const resProxy = await fetch(`/api/proxy-image?url=${encodeURIComponent(member.photoUrl)}`);
+          addDiagLog(`  - প্রক্সি রেসপন্স: ${resProxy.ok ? '✅ সফল' : `❌ ব্যর্থ (HTTP ${resProxy.status})`}`);
+          if (resProxy.ok) {
+            const blob = await resProxy.blob();
+            addDiagLog(`  - প্রক্সি ডাউনলোড সম্পন্ন। ফাইলের সাইজ: ${blob.size} বাইটস`);
+          } else {
+            addDiagLog(`  - সমাধান: ছবিটির ইউআরএল হয়তো অবৈধ অথবা সার্ভার সংযোগ সাময়িকভাবে বিচ্ছিন্ন।`);
+          }
+        } catch (proxyErr: any) {
+          addDiagLog(`  - প্রক্সি রিকোয়েস্ট চরম ব্যর্থ: ${proxyErr.message || proxyErr}`);
+        }
+      } else {
+        addDiagLog('৪. "মেম্বার প্রোফাইল ছবি" অনুপস্থিত (মেম্বার প্রোফাইলে কোনো ছবি নেই)।');
+      }
+
+      // 5. Signature Check
+      if (settings?.idSignerSignatureUrl) {
+        addDiagLog(`৫. "ইস্যুকারীর স্বাক্ষর" সোর্স নেটওয়ার্ক স্ক্যান... URL: ${settings.idSignerSignatureUrl}`);
+        try {
+          addDiagLog(`- সিকিউর ইমেজ প্রক্সির মাধ্যমে রিকোয়েস্ট পাঠানো হচ্ছে...`);
+          const resProxy = await fetch(`/api/proxy-image?url=${encodeURIComponent(settings.idSignerSignatureUrl)}`);
+          addDiagLog(`  - প্রক্সি রেসপন্স: ${resProxy.ok ? '✅ সফল' : `❌ ব্যর্থ (HTTP ${resProxy.status})`}`);
+          if (resProxy.ok) {
+            const blob = await resProxy.blob();
+            addDiagLog(`  - প্রক্সি ডাউনলোড সম্পন্ন। ফাইলের সাইজ: ${blob.size} বাইটস`);
+          }
+        } catch (proxyErr: any) {
+          addDiagLog(`  - প্রক্সি রিকোয়েস্ট চরম ব্যর্থ: ${proxyErr.message || proxyErr}`);
+        }
+      } else {
+        addDiagLog('৫. "ইস্যুকারীর স্বাক্ষর" অনুপস্থিত (ইস্যুকারীর স্বাক্ষরের ইউআরএল খালি)।');
+      }
+
+      // 6. QR generation and load check
+      addDiagLog('৬. ভ্যালিডেশন কিউআর কোড জেনারেশন এবং মেমোরি রাইট টেস্ট...');
+      try {
+        const verifyUrl = `${window.location.protocol}//${window.location.host}/?verify-member=${member.id}`;
+        const qrDataUrl = await QRCode.toDataURL(verifyUrl, { margin: 1, width: 360 });
+        addDiagLog('  - কিউআর কোড ডেটা ইউআরএল সফলভাবে জেনারেট হয়েছে।');
+        const img = new Image();
+        img.src = qrDataUrl;
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+        });
+        addDiagLog('  - জেনারেটেড কিউআর কোড ডিকোডিং টেস্ট সম্পন্ন হয়েছে।');
+      } catch (qrErr: any) {
+        addDiagLog(`  - কিউআর কোড টেস্ট ব্যর্থ: ${qrErr.message || qrErr}`);
+      }
+
+      addDiagLog('🎉 ডায়াগনস্টিকস সম্পন্ন হয়েছে! সমস্ত নেটওয়ার্ক পাথ এবং ব্রাউজার এপিআই সঠিকভাবে প্রসেস করা হয়েছে।');
+    } catch (err: any) {
+      addDiagLog(`❌ ডায়াগনস্টিকস চলাকালীন বিপর্যয় ঘটেছে: ${err.message || err}`);
     } finally {
+      setIsDiagnosing(false);
+    }
+  };
+
+  const openInNewTab = () => {
+    try {
+      if (!fallbackImageUrl) {
+        toast.error('ই-কার্ড ইমেজ প্রিভিউ পাওয়া যায়নি।');
+        return;
+      }
+      const newTab = window.open();
+      if (newTab) {
+        newTab.document.write(`<title>SSF Member Card - ${member.name}</title><body style="margin:0;display:flex;justify-content:center;align-items:center;background:#111827;color:#f3f4f6;font-family:sans-serif;"><div style="text-align:center;padding:20px;"><img src="${fallbackImageUrl}" style="max-width:100%;max-height:85vh;box-shadow:0 25px 50px -12px rgba(0,0,0,0.5);border-radius:12px;border:1px solid #374151;"/><p style="margin-top:20px;font-size:14px;color:#9ca3af;">💡 ছবিটির ওপর চেপে ধরে সরাসরি মোবাইলে সংরক্ষণ করুন / Right click and Save Image As to download</p></div></body>`);
+        newTab.document.close();
+      } else {
+        toast.error('পপআপ উইন্ডো খোলার পারমিশন ব্লকড! অনুগ্রহ করে ব্রাউজার সেটিংসে পপআপ উইন্ডো অনুমোদন করুন।');
+      }
+    } catch (e) {
+      console.error('Failed to open in new tab:', e);
+      toast.error('নতুন ট্যাবে ছবি খুলতে ব্যর্থ হয়েছে।');
+    }
+  };
+
+  const downloadPNG = async () => {
+    setDownloadStepLogs([]);
+    setDownloadError(null);
+    setValidationErrors(null);
+    setFallbackImageUrl(null);
+    setFallbackBlob(null);
+
+    // Initialize the live on-screen debug window session
+    LiveExportStore.start(`SSF Member Card - ${member.name}`, 'png', () => downloadPNG());
+    LiveExportStore.setStep('init', 'running');
+    
+    addLog('সদস্য ই-কার্ড (PNG) ডাউনলোড শুরু হচ্ছে...');
+    setIsExporting(true);
+    
+    let canvas: HTMLCanvasElement | null = null;
+    let success = false;
+    let currentStep = 'init';
+    
+    try {
+      await new Promise(resolve => setTimeout(resolve, 300));
+      LiveExportStore.setStep('init', 'success');
+      
+      currentStep = 'template';
+      LiveExportStore.setStep('template', 'running');
+      addLog('ধাপ ১: মেম্বার কার্ডের লেআউট ও কালার স্কিম লোড করা হচ্ছে...');
+      await new Promise(resolve => setTimeout(resolve, 200));
+      LiveExportStore.setStep('template', 'success');
+
+      currentStep = 'fonts';
+      LiveExportStore.setStep('fonts', 'running');
+
+      const customAddLog = (msg: string) => {
+        addLog(msg);
+        
+        // Dynamically trace fonts/assets/images/render transitions
+        if (msg.includes('বাংলা ও ইংরেজি ফন্টসমূহ')) {
+          currentStep = 'fonts';
+          LiveExportStore.setStep('fonts', 'running');
+        } else if (msg.includes('ফন্ট প্রি-লোড সফল')) {
+          LiveExportStore.setStep('fonts', 'success');
+        } else if (msg.includes('লোগো, সদস্যের ছবি, কিউআর কোড')) {
+          currentStep = 'assets';
+          LiveExportStore.setStep('assets', 'running');
+          LiveExportStore.setStep('qr', 'running');
+          LiveExportStore.setStep('images', 'running');
+        } else if (msg.includes('ভ্যালিডেশন কিউআর কোড') && msg.includes('সফল')) {
+          LiveExportStore.setStep('qr', 'success');
+        } else if (msg.includes('মেম্বার প্রোফাইল ছবি') && msg.includes('সফল')) {
+          LiveExportStore.setStep('images', 'success');
+        } else if (msg.includes('সবগুলো অ্যাসেট সফলভাবে')) {
+          LiveExportStore.setStep('assets', 'success');
+        }
+      };
+
+      addLog(`ধাপ ২: ক্যানভাস তৈরি করা হচ্ছে (Konva.js)...`);
+      currentStep = 'render';
+      LiveExportStore.setStep('render', 'running');
+      canvas = await MemberCardRenderer.drawMemberCard(member, settings, 2.5, customAddLog);
+      addLog('ক্যানভাস সফলভাবে জেনারেট হয়েছে। সাইজ: ' + canvas.width + 'x' + canvas.height);
+      LiveExportStore.setStep('render', 'success');
+      
+      const dataUrl = canvas.toDataURL('image/png');
+      setFallbackImageUrl(dataUrl);
+      
+      currentStep = 'validate';
+      LiveExportStore.setStep('validate', 'running');
+      addLog('ধাপ ৩: ক্যানভাস সিকিউরিটি এবং লেআউট ভ্যালিডেশন চেক করা হচ্ছে...');
+      
+      // Perform structural validation checks
+      const testCtx = canvas.getContext('2d');
+      if (testCtx) {
+        testCtx.getImageData(0, 0, 1, 1); // will throw security error if tainted
+      }
+      addLog('ক্যানভাস সিকিউরিটি ভ্যালিডেশন সফল। কোনো প্রকার Taint পাওয়া যায়নি।');
+      LiveExportStore.setStep('validate', 'success');
+
+      currentStep = 'blob';
+      LiveExportStore.setStep('blob', 'running');
+      addLog('ধাপ ৪: ক্যানভাস থেকে ছবি (Blob) তৈরি করা হচ্ছে...');
+      const filename = `SSF_Member_Card_${member.name.replace(/\s+/g, '_')}_${member.id.substring(0, 5)}.png`;
+      setFallbackFilename(filename);
+      setFallbackFormat('png');
+
+      const blobResult = await MemberCardRenderer.exportCanvasToBlob(canvas);
+      setFallbackBlob(blobResult);
+      addLog(`ইমেজ ব্লব অবজেক্ট তৈরি সম্পন্ন। সাইজ: ${blobResult.size} বাইটস`);
+      LiveExportStore.setStep('blob', 'success');
+      
+      currentStep = 'prepare_download';
+      LiveExportStore.setStep('prepare_download', 'running');
+      addLog('ধাপ ৫: ব্রাউজারে ফাইল ডাউনলোড প্রস্তুত করা হচ্ছে...');
+      const fileUrl = URL.createObjectURL(blobResult);
+      LiveExportStore.setStep('prepare_download', 'success');
+
+      currentStep = 'download_started';
+      LiveExportStore.setStep('download_started', 'running');
+      addLog('ধাপ ৬: ব্রাউজারে ফাইল ডাউনলোড ট্রিগার করা হচ্ছে...');
+      const link = document.createElement('a');
+      link.href = fileUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(fileUrl);
+      addLog('ডাউনলোড সিগন্যাল সফলভাবে পাঠানো হয়েছে।');
+      
+      LiveExportStore.setStep('download_started', 'success');
+      success = true;
+    } catch (err: any) {
+      if (err instanceof ValidationError) {
+        addLog(`রেন্ডারিং ভ্যালিডেশন ব্যর্থতা: ${err.message}`);
+        setValidationErrors(err.details);
+        setDownloadError(err.message);
+      } else {
+        addLog(`ত্রুটি: ${err.message || err}`);
+        setDownloadError(err.message || 'অজানা রেন্ডারিং বা ডাউনলোড ত্রুটি');
+      }
+      LiveExportStore.fail(currentStep, err);
+    } finally {
+      if (canvas && (canvas as any)._destroyStage) {
+        (canvas as any)._destroyStage();
+      }
       setIsExporting(false);
+    }
+    
+    if (!success) {
+      addLog('ডাউনলোড পাইপলাইন ব্যর্থ হয়েছে। বিস্তারিত দেখতে স্ক্রিনের প্যানেলটি ব্যবহার করুন।');
+      setShowFallbackModal(true);
+      toast.error('ডাউনলোড করা যায়নি। বিস্তারিত দেখতে স্ক্রিনের প্যানেলটি ব্যবহার করুন।');
+    } else {
+      toast.success('মেম্বার কার্ড ইমেজ সফলভাবে ডাউনলোড হয়েছে!');
     }
   };
 
   const downloadPDF = async () => {
-    const cardEl = document.getElementById('member-identity-card');
-    if (!cardEl) return;
+    setDownloadStepLogs([]);
+    setDownloadError(null);
+    setValidationErrors(null);
+    setFallbackImageUrl(null);
+    setFallbackBlob(null);
+    setFallbackPdf(null);
+    
+    // Initialize the live on-screen debug window session
+    LiveExportStore.start(`SSF Member Card - ${member.name}`, 'pdf', () => downloadPDF());
+    LiveExportStore.setStep('init', 'running');
+
+    addLog('সদস্য ই-কার্ড (PDF) ডাউনলোড শুরু হচ্ছে...');
+    setIsExporting(true);
+    
+    let canvas: HTMLCanvasElement | null = null;
+    let success = false;
+    let currentStep = 'init';
+    
     try {
-      setIsExporting(true);
-      await new Promise((resolve) => setTimeout(resolve, 150));
-      const canvas = await html2canvas(cardEl, {
-        scale: 3,
-        useCORS: true,
-        backgroundColor: '#09090b'
-      });
-      const imgData = canvas.toDataURL('image/png');
+      await new Promise(resolve => setTimeout(resolve, 300));
+      LiveExportStore.setStep('init', 'success');
+
+      currentStep = 'template';
+      LiveExportStore.setStep('template', 'running');
+      addLog('ধাপ ১: মেম্বার কার্ডের লেআউট ও কালার স্কিম লোড করা হচ্ছে...');
+      await new Promise(resolve => setTimeout(resolve, 200));
+      LiveExportStore.setStep('template', 'success');
+
+      currentStep = 'fonts';
+      LiveExportStore.setStep('fonts', 'running');
+
+      const customAddLog = (msg: string) => {
+        addLog(msg);
+        
+        // Dynamically trace fonts/assets/images/render transitions
+        if (msg.includes('বাংলা ও ইংরেজি ফন্টসমূহ')) {
+          currentStep = 'fonts';
+          LiveExportStore.setStep('fonts', 'running');
+        } else if (msg.includes('ফন্ট প্রি-লোড সফল')) {
+          LiveExportStore.setStep('fonts', 'success');
+        } else if (msg.includes('লোগো, সদস্যের ছবি, কিউআর কোড')) {
+          currentStep = 'assets';
+          LiveExportStore.setStep('assets', 'running');
+          LiveExportStore.setStep('qr', 'running');
+          LiveExportStore.setStep('images', 'running');
+        } else if (msg.includes('ভ্যালিডেশন কিউআর কোড') && msg.includes('সফল')) {
+          LiveExportStore.setStep('qr', 'success');
+        } else if (msg.includes('মেম্বার প্রোফাইল ছবি') && msg.includes('সফল')) {
+          LiveExportStore.setStep('images', 'success');
+        } else if (msg.includes('সবগুলো অ্যাসেট সফলভাবে')) {
+          LiveExportStore.setStep('assets', 'success');
+        }
+      };
+
+      addLog(`ধাপ ২: ক্যানভাস তৈরি করা হচ্ছে (Konva.js)...`);
+      currentStep = 'render';
+      LiveExportStore.setStep('render', 'running');
+      canvas = await MemberCardRenderer.drawMemberCard(member, settings, 2.5, customAddLog);
+      addLog('ক্যানভাস সফলভাবে জেনারেট হয়েছে। সাইজ: ' + canvas.width + 'x' + canvas.height);
+      LiveExportStore.setStep('render', 'success');
       
-      // Landscape CR80 standard credit card: 85.6mm width, 54mm height
-      const pdf = new jsPDF({
-        orientation: 'landscape',
-        unit: 'mm',
-        format: [85.6, 54]
-      });
+      const dataUrl = canvas.toDataURL('image/png');
+      setFallbackImageUrl(dataUrl);
       
-      pdf.addImage(imgData, 'PNG', 0, 0, 85.6, 54);
-      pdf.save(`Member_Card_${member.name}.pdf`);
-    } catch (err) {
-      console.error('PDF download error:', err);
-      alert('দুঃখিত, পিডিএফ ডাউনলোডের সময় কোনো সমস্যা হয়েছে। পুনরায় চেষ্টা করুন।');
+      currentStep = 'validate';
+      LiveExportStore.setStep('validate', 'running');
+      addLog('ধাপ ৩: ক্যানভাস সিকিউরিটি এবং লেআউট ভ্যালিডেশন চেক করা হচ্ছে...');
+      
+      // Perform structural validation checks
+      const testCtx = canvas.getContext('2d');
+      if (testCtx) {
+        testCtx.getImageData(0, 0, 1, 1);
+      }
+      addLog('ক্যানভাস সিকিউরিটি ভ্যালিডেশন সফল। কোনো প্রকার Taint পাওয়া যায়নি।');
+      LiveExportStore.setStep('validate', 'success');
+
+      currentStep = 'blob';
+      LiveExportStore.setStep('blob', 'running');
+      addLog('ধাপ ৪: ক্যানভাস থেকে PDF তৈরি করা হচ্ছে...');
+      const filename = `SSF_Member_Card_${member.name.replace(/\s+/g, '_')}_${member.id.substring(0, 5)}.pdf`;
+      setFallbackFilename(filename);
+      setFallbackFormat('pdf');
+
+      const pdfResult = await MemberCardRenderer.exportCanvasToPDF(canvas, filename);
+      setFallbackPdf(pdfResult);
+      addLog('PDF অবজেক্ট তৈরি সম্পন্ন।');
+      LiveExportStore.setStep('blob', 'success');
+      
+      currentStep = 'prepare_download';
+      LiveExportStore.setStep('prepare_download', 'running');
+      addLog('ধাপ ৫: ব্রাউজারে PDF ডাউনলোড প্রস্তুত করা হচ্ছে...');
+      const fileUrl = URL.createObjectURL(pdfResult);
+      LiveExportStore.setStep('prepare_download', 'success');
+
+      currentStep = 'download_started';
+      LiveExportStore.setStep('download_started', 'running');
+      addLog('ধাপ ৬: ব্রাউজারে PDF ডাউনলোড ট্রিগার করা হচ্ছে...');
+      const link = document.createElement('a');
+      link.href = fileUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(fileUrl);
+      addLog('PDF ডাউনলোড সিগন্যাল সফলভাবে পাঠানো হয়েছে।');
+      
+      LiveExportStore.setStep('download_started', 'success');
+      success = true;
+    } catch (err: any) {
+      if (err instanceof ValidationError) {
+        addLog(`রেন্ডারিং ভ্যালিডেশন ব্যর্থতা: ${err.message}`);
+        setValidationErrors(err.details);
+        setDownloadError(err.message);
+      } else {
+        addLog(`ত্রুটি: ${err.message || err}`);
+        setDownloadError(err.message || 'অজানা রেন্ডারিং বা ডাউনলোড ত্রুটি');
+      }
+      LiveExportStore.fail(currentStep, err);
     } finally {
+      if (canvas && (canvas as any)._destroyStage) {
+        (canvas as any)._destroyStage();
+      }
       setIsExporting(false);
     }
+    
+    if (!success) {
+      addLog('ডাউনলোড পাইপলাইন ব্যর্থ হয়েছে। বিস্তারিত দেখতে স্ক্রিনের প্যানেলটি ব্যবহার করুন।');
+      setShowFallbackModal(true);
+      toast.error('PDF ডাউনলোড করা যায়নি। বিস্তারিত দেখতে স্ক্রিনের প্যানেলটি ব্যবহার করুন।');
+    } else {
+      toast.success('মেম্বার কার্ড PDF সফলভাবে ডাউনলোড হয়েছে!');
+    }
+  };
+
+  const compressImage = (f: File): Promise<Blob | File> => {
+    return new Promise((resolve) => {
+      if (!f.type.startsWith('image/')) {
+        resolve(f);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new window.Image();
+        img.onload = () => {
+          const maxDimension = 800; // Profile photos only need to be 800px max
+          let width = img.width;
+          let height = img.height;
+
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          } else {
+            resolve(f);
+            return;
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(f);
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                resolve(new File([blob], f.name.substring(0, f.name.lastIndexOf('.')) + '.jpg', { type: 'image/jpeg' }));
+              } else {
+                resolve(f);
+              }
+            },
+            'image/jpeg',
+            0.80
+          );
+        };
+        img.onerror = () => resolve(f);
+        img.src = event.target?.result as string;
+      };
+      reader.onerror = () => resolve(f);
+      reader.readAsDataURL(f);
+    });
   };
 
   const handlePhotoUpload = async (file: File) => {
     setUploadingPhoto(true);
     setUploadError('');
+
     try {
+      const processedFile = await compressImage(file);
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', processedFile);
       formData.append('userName', member.name);
 
       const res = await fetch(`/api/upload-profile-photo?userName=${encodeURIComponent(member.name)}`, {
@@ -346,50 +882,56 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
         body: formData
       });
       if (!res.ok) {
-        throw new Error('সার্ভারে ছবি আপলোড করা যায়নি। আপনার হোস্টিংয়ে যদি নোড ব্যাকএন্ড সক্রিয় না থাকে, তবে অনুগ্রহ করে ছবির লিংক (URL) ব্যবহার করুন।');
+        throw new Error('সার্ভারে ছবি আপলোড করা যায়নি। দয়া করে পুনরায় চেষ্টা করুন বা ছবির লিংক (URL) ব্যবহার করুন।');
       }
       const contentType = res.headers.get('content-type') || '';
       if (!contentType.includes('application/json')) {
-        throw new Error('আপনার হোস্টিংয়ে ফাইল আপলোড মডিউলটি সক্রিয় নেই। অনুগ্রহ করে ছবির লিংক (URL) ব্যবহার করে প্রোফাইল ছবি সংরক্ষণ করুন।');
+        throw new Error('ফাইল আপলোড মডিউলটি এই মুহূর্তে সফলভাবে উত্তর দেয়নি। অনুগ্রহ করে ছবির লিংক (URL) ব্যবহার করুন।');
       }
       const data = await res.json();
-      if (data && data.url) {
-        // Save to local backend db if running full-stack
-        await fetch(`/api/memberships/${member.id}/photo`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ photoUrl: data.url })
-        }).catch(err => console.warn('Non-blocking local photo db update failed:', err));
-        
-        // Log to edit history
-        const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
-        const editedBy = member.email || 'সদস্য নিজে';
-        const photoChange = {
-          timestamp,
-          editedBy,
-          field: 'প্রোফাইল ছবি / Photo',
-          oldValue: member.photoUrl || 'নাই/None',
-          newValue: data.url
-        };
-        const updatedHistory = [...(member.editHistory || []), photoChange];
-        const updatedMember: MemberRegistration = {
-          ...member,
-          photoUrl: data.url,
-          editHistory: updatedHistory
-        };
+      if (!data || !data.url) {
+        throw new Error('আপলোড করা ছবির সঠিক লিংক পাওয়া যায়নি।');
+      }
 
-        if (onUpdateMember) {
-          await onUpdateMember(updatedMember);
-        }
+      const finalUrl = data.url;
 
-        // Refresh the db context in parents
-        if (onRefresh) {
-          await onRefresh();
-        }
+      // Update local node Express db.json if running full-stack
+      await fetch(`/api/memberships/${member.id}/photo`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photoUrl: finalUrl })
+      }).catch(err => console.warn('Non-blocking local photo db update failed:', err));
+      
+      // Log to edit history
+      const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+      const editedBy = member.email || 'সদস্য নিজে';
+      const photoChange = {
+        timestamp,
+        editedBy,
+        field: 'প্রোফাইল ছবি / Photo',
+        oldValue: member.photoUrl || 'নাই/None',
+        newValue: finalUrl
+      };
+      const updatedHistory = [...(member.editHistory || []), photoChange];
+      const updatedMember: MemberRegistration = {
+        ...member,
+        photoUrl: finalUrl,
+        editHistory: updatedHistory
+      };
+
+      if (onUpdateMember) {
+        await onUpdateMember(updatedMember);
+      }
+
+      toast.success('প্রোফাইল ছবি সফলভাবে আপলোড এবং ফায়ারবেইসে সংরক্ষণ করা হয়েছে!');
+
+      // Refresh the db context in parents
+      if (onRefresh) {
+        await onRefresh();
       }
     } catch (err: any) {
       console.error(err);
-      setUploadError(err.message || 'ছবি আপলোড করতে অপ্রত্যাশিত ত্রুটি দেখা দিয়েছে।');
+      setUploadError(err.message || 'ছবি আপলোড ও সংরক্ষণ করতে অপ্রত্যাশিত ত্রুটি দেখা দিয়েছে।');
     } finally {
       setUploadingPhoto(false);
     }
@@ -406,8 +948,8 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
     try {
       let finalPhotoUrl = targetUrl;
       
+      // Download the image through backend proxy, saving to server uploads
       if (useProxy) {
-        // Try backend download
         try {
           const res = await fetch('/api/upload-profile-photo-url', {
             method: 'POST',
@@ -426,22 +968,22 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
               const data = await res.json();
               if (data && data.url) {
                 finalPhotoUrl = data.url;
-                
-                // Also update local Express db.json if running full-stack
-                await fetch(`/api/memberships/${member.id}/photo`, {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ photoUrl: finalPhotoUrl })
-                }).catch(err => console.warn('Non-blocking local db update failed:', err));
               }
             }
           } else {
-            console.warn('Backend download failed, falling back to direct URL saving');
+            console.warn('Backend download failed, falling back to direct URL');
           }
         } catch (backendErr) {
-          console.warn('Backend download error, falling back to direct URL saving', backendErr);
+          console.warn('Backend download error, falling back to direct URL', backendErr);
         }
       }
+
+      // Also update local Express db.json if running full-stack
+      await fetch(`/api/memberships/${member.id}/photo`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photoUrl: finalPhotoUrl })
+      }).catch(err => console.warn('Non-blocking local db update failed:', err));
 
       // Save to Firestore member database
       const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
@@ -467,7 +1009,9 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
         }
       }
 
+      toast.success('ছবি লিংক সফলভাবে সংরক্ষণ করা হয়েছে!');
       setPhotoUrlInput('');
+      
       // Refresh the db context in parents
       if (onRefresh) {
         await onRefresh();
@@ -726,6 +1270,42 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
             <Clock className="w-3 h-3" />
             <span>সরাসরি সিস্টেমে প্রিন্ট করুন (Window Print)</span>
           </button>
+
+          <button
+            onClick={runDiagnostics}
+            disabled={isDiagnosing}
+            className="mt-2 w-full py-2 bg-rose-950/20 text-rose-400 hover:text-rose-300 hover:bg-rose-950/30 border border-rose-950/40 text-xs font-bold rounded cursor-pointer transition flex items-center justify-center gap-1.5"
+          >
+            <Flame className={`w-3.5 h-3.5 ${isDiagnosing ? 'animate-spin' : ''}`} />
+            <span>{isDiagnosing ? 'ডায়াগনস্টিক টেস্ট রান হচ্ছে...' : 'ই-কার্ড ডাউনলোড ও নেটওয়ার্ক ডায়াগনস্টিকস রান করুন'}</span>
+          </button>
+
+          {showDiagnosticsPanel && (
+            <div className="mt-3 bg-zinc-950 border border-zinc-900 rounded p-4 space-y-3 font-mono text-[10px] leading-relaxed text-zinc-350">
+              <div className="flex justify-between items-center border-b border-zinc-900 pb-2">
+                <span className="text-emerald-400 font-bold flex items-center gap-1.5 uppercase">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  সিস্টেম ডায়াগনস্টিক লগ রিপোর্ট
+                </span>
+                <button 
+                  onClick={() => setShowDiagnosticsPanel(false)} 
+                  className="text-zinc-550 hover:text-zinc-350 text-[11px]"
+                >
+                  [বন্ধ করুন]
+                </button>
+              </div>
+              <div className="h-48 overflow-y-auto space-y-1 bg-black/40 p-2.5 rounded border border-zinc-900/60 scrollbar-thin scrollbar-thumb-zinc-850 scrollbar-track-transparent">
+                {diagnosticLogs.map((log, idx) => (
+                  <div key={idx} className={log.includes('❌') ? 'text-rose-400 font-semibold' : log.includes('✅') ? 'text-emerald-400' : 'text-zinc-300'}>
+                    {log}
+                  </div>
+                ))}
+              </div>
+              <p className="text-[9.5px] text-zinc-500 font-sans leading-relaxed">
+                💡 যদি ডায়াগনস্টিক রিপোর্টে লাল রঙের <b>❌ অবরুদ্ধ</b> বা <b>ব্যর্থতা</b> মেসেজ দেখেন, তবে বুঝবেন ওই নির্দিষ্ট ইমেজ লিংক বা রিসোর্সটি ডাউনলোড করা সম্ভব হচ্ছে না। বিস্তারিত তথ্য দিয়ে এডমিনকে সেটিংস থেকে ছবি পরিবর্তন করতে বলুন।
+              </p>
+            </div>
+          )}
 
           {/* Profile Photo Uploader panel */}
           <div className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded p-5 shadow-sm space-y-4 font-sans">
@@ -1289,7 +1869,28 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
               ) : (
                 <div className="divide-y divide-zinc-150 dark:divide-zinc-850 max-h-[250px] overflow-y-auto pr-1">
                   {(blogs || []).filter(b => b.authorEmail === member.email).map((b) => (
-                    <div key={b.id} className="py-2.5 flex items-center justify-between text-xs gap-3">
+                    <div
+                      key={b.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`ব্লগ প্রবন্ধঃ ${b.title}`}
+                      onClick={() => {
+                        if (setCurrentTab) {
+                          window.history.pushState(null, '', `?tab=news&blogId=${b.id}`);
+                          setCurrentTab('news');
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          if (setCurrentTab) {
+                            window.history.pushState(null, '', `?tab=news&blogId=${b.id}`);
+                            setCurrentTab('news');
+                          }
+                        }
+                      }}
+                      className="py-2.5 px-3 flex items-center justify-between text-xs gap-3 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/60 rounded border border-transparent hover:border-zinc-200 dark:hover:border-zinc-800 transition duration-150 outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
+                    >
                       <div className="min-w-0">
                         <span className="text-[9px] bg-zinc-100 dark:bg-zinc-900 text-zinc-500 font-mono px-1 py-0.5 rounded font-bold mr-1.5">{b.category}</span>
                         <h5 className="font-bold text-zinc-850 dark:text-zinc-200 truncate mt-0.5">{b.title}</h5>
@@ -1324,22 +1925,46 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
                 
                 <div className="mt-3.5 space-y-2.5 pb-4">
                   {circulars.slice(0, 3).map((circ) => (
-                    <div key={circ.id} className="text-[11px] font-sans pb-2 border-b border-zinc-50 dark:border-zinc-900/40 last:border-0">
+                    <div
+                      key={circ.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`সার্কুলারঃ ${circ.title}`}
+                      onClick={() => {
+                        if (setCurrentTab) {
+                          window.history.pushState(null, '', `?tab=circulars&circularId=${circ.id}`);
+                          setCurrentTab('circulars');
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          if (setCurrentTab) {
+                            window.history.pushState(null, '', `?tab=circulars&circularId=${circ.id}`);
+                            setCurrentTab('circulars');
+                          }
+                        }
+                      }}
+                      className="text-[11px] font-sans p-2.5 rounded hover:bg-zinc-50 dark:hover:bg-zinc-900/60 cursor-pointer border border-transparent hover:border-zinc-200 dark:hover:border-zinc-800 transition duration-150 outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
+                    >
                       <span className="text-[9px] text-zinc-400 font-mono block">{circ.date}</span>
-                      <p className="font-semibold text-zinc-750 dark:text-zinc-300 hover:text-rose-650 cursor-pointer transition line-clamp-1">{circ.title}</p>
+                      <p className="font-semibold text-zinc-750 dark:text-zinc-300 hover:text-rose-650 transition line-clamp-1 mt-0.5">{circ.title}</p>
                     </div>
                   ))}
 
                   {circulars.length === 0 && (
-                    <p className="text-[10px] text-zinc-450 italic py-4">কোনো নোটিশ আপলোড করা হয়নি।</p>
+                    <p className="text-[10px] text-zinc-455 italic py-4">কোনো নোটিশ আপলোড করা হয়নি।</p>
                   )}
                 </div>
               </div>
 
               <div className="pt-2 border-t border-zinc-50 dark:border-zinc-900/60">
-                <span className="text-[10px] text-rose-600 dark:text-rose-400 font-bold hover:underline cursor-pointer">
+                <button
+                  onClick={() => setCurrentTab?.('circulars')}
+                  className="text-[10px] text-rose-600 dark:text-rose-400 font-bold hover:underline cursor-pointer bg-transparent border-0 p-0 text-left outline-none focus-visible:ring-1 focus-visible:ring-rose-500 rounded px-1"
+                >
                   সমস্ত সার্কুলার বোর্ড দেখুন
-                </span>
+                </button>
               </div>
             </div>
 
@@ -1353,11 +1978,32 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
                 
                 <div className="mt-3.5 space-y-2.5 pb-4">
                   {books.slice(0, 3).map((book) => (
-                    <div key={book.id} className="text-[11px] font-sans pb-2 border-b border-zinc-50 dark:border-zinc-900/40 last:border-0 flex gap-2">
+                    <div
+                      key={book.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`বইঃ ${book.title}`}
+                      onClick={() => {
+                        if (setCurrentTab) {
+                          window.history.pushState(null, '', `?tab=books&bookId=${book.id}`);
+                          setCurrentTab('books');
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          if (setCurrentTab) {
+                            window.history.pushState(null, '', `?tab=books&bookId=${book.id}`);
+                            setCurrentTab('books');
+                          }
+                        }
+                      }}
+                      className="text-[11px] font-sans p-2.5 rounded hover:bg-zinc-50 dark:hover:bg-zinc-900/60 cursor-pointer border border-transparent hover:border-zinc-200 dark:hover:border-zinc-800 transition duration-150 flex gap-2.5 outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
+                    >
                       <img src={book.coverImage} alt={book.title} className="w-8 h-10 object-cover rounded border border-zinc-200/50" onError={(e) => { (e.target as any).style.display = 'none'; }} />
-                      <div>
+                      <div className="min-w-0">
                         <p className="font-semibold text-zinc-750 dark:text-zinc-300 line-clamp-1">{book.title}</p>
-                        <span className="text-[9px] text-zinc-400 block font-sans">লেখকঃ {book.author}</span>
+                        <span className="text-[9px] text-zinc-400 block font-sans mt-0.5">লেখকঃ {book.author}</span>
                       </div>
                     </div>
                   ))}
@@ -1369,9 +2015,12 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
               </div>
 
               <div className="pt-2 border-t border-zinc-50 dark:border-zinc-900/60">
-                <span className="text-[10px] text-rose-600 dark:text-rose-400 font-bold hover:underline cursor-pointer">
+                <button
+                  onClick={() => setCurrentTab?.('books')}
+                  className="text-[10px] text-rose-600 dark:text-rose-400 font-bold hover:underline cursor-pointer bg-transparent border-0 p-0 text-left outline-none focus-visible:ring-1 focus-visible:ring-rose-500 rounded px-1"
+                >
                   লাইব্রেরী ও প্রকাশনা পাতা দেখুন
-                </span>
+                </button>
               </div>
             </div>
 
@@ -1380,6 +2029,425 @@ export default function MemberPortal({ member, onLogout, onRefresh, onUpdateMemb
         </div>
 
       </div>
+
+      {/* Sandbox High-Resolution Card for Flawless PNG/PDF Generation */}
+      <div 
+        id="export-card-sandbox" 
+        className="fixed -left-[9999px] top-0 pointer-events-none w-[1011px] h-[638px] bg-gradient-to-br from-zinc-200 to-rose-200 p-[3px] rounded-[24px] overflow-hidden flex items-center justify-center"
+        style={{ zIndex: -1000 }}
+      >
+        <div className="bg-white w-[1005px] h-[632px] rounded-[22px] p-12 relative flex flex-col justify-between box-border">
+          {/* Background Watermark */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full border border-dashed border-rose-600/15 flex items-center justify-center pointer-events-none select-none">
+            <img
+              src={preloadedImages.logo1 || 'https://i.ibb.co.com/F4MKM3R2/20260527-055637.png'}
+              alt="Watermark Logo"
+              className="w-56 h-56 object-contain opacity-[0.06] saturate-125"
+            />
+          </div>
+
+          {/* Header */}
+          <div className="flex items-center justify-between border-b-2 border-zinc-200 pb-5 relative">
+            <div className="flex items-center gap-5">
+              <img
+                src={preloadedImages.logo1 || 'https://i.ibb.co.com/F4MKM3R2/20260527-055637.png'}
+                alt="সমাজতান্ত্রিক ছাত্র ফ্রন্ট লোগো"
+                className="h-16 w-16 object-contain"
+              />
+              <div className="flex flex-col">
+                <img
+                  src={preloadedImages.logo2 || 'https://i.ibb.co/R4BCPZ0B/20250130-143124.png'}
+                  alt="সমাজতান্ত্রিক ছাত্র ফ্রন্ট"
+                  className="h-13 w-auto object-contain saturate-125 contrast-125"
+                />
+                <p className="text-[12px] text-zinc-500 font-mono tracking-[4px] mt-1 font-bold">
+                  MYMENSINGH DISTRICT
+                </p>
+              </div>
+            </div>
+            <div>
+              <span className="bg-rose-100 text-rose-700 font-sans text-[14px] font-extrabold border-2 border-rose-200 px-4 py-1 rounded-md shadow-xs select-none uppercase tracking-wider">
+                {getMemberBadgeText(member)}
+              </span>
+            </div>
+          </div>
+
+          {/* Main Body */}
+          <div className="grid grid-cols-12 gap-6 my-6 items-start relative flex-1">
+            {/* Profile Photo */}
+            <div className="col-span-3 flex flex-col items-center justify-center">
+              <div className="w-[180px] h-[225px] rounded-lg border-2 border-zinc-200 bg-zinc-50 flex flex-col items-center justify-center text-rose-600 relative overflow-hidden shadow-md shrink-0">
+                {(preloadedImages.profile || member.photoUrl) ? (
+                  <img 
+                    src={preloadedImages.profile || member.photoUrl} 
+                    alt={member.name} 
+                    className="w-full h-full object-cover" 
+                  />
+                ) : (
+                  <>
+                    <User className="w-16 h-16 opacity-40 text-rose-600" />
+                    <div className="absolute bottom-0 inset-x-0 bg-rose-600 text-white text-[10px] py-[3px] text-center font-bold tracking-widest uppercase font-mono">
+                      APPROVED
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Info Details */}
+            <div className="col-span-9 space-y-3 font-sans">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                <div className="col-span-2">
+                  <span className="text-[11px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">নাম / Full Name</span>
+                  <strong className="text-[20px] font-extrabold text-zinc-900 tracking-wide block leading-snug mt-1">{member.name}</strong>
+                </div>
+
+                <div>
+                  <span className="text-[11px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">শ্রেণি / Class</span>
+                  <span className="text-[14px] text-zinc-800 font-bold block leading-tight mt-1">{member.department || 'সদস্য'}</span>
+                </div>
+
+                <div>
+                  <span className="text-[11px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">রক্তের গ্রুপ / Blood</span>
+                  <span className="text-[14px] text-zinc-900 font-bold block leading-tight mt-1">{member.bloodGroup || 'N/A'}</span>
+                </div>
+
+                <div className="col-span-2">
+                  <span className="text-[11px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">শিক্ষা প্রতিষ্ঠান / Institution</span>
+                  <span className="text-[15px] text-zinc-800 font-semibold block leading-tight mt-1">{member.institution}</span>
+                </div>
+
+                <div className="col-span-2">
+                  <span className="text-[11px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">মোবাইল / Mobile No</span>
+                  <span className="text-[14px] font-mono text-zinc-800 font-bold block leading-tight mt-1">{member.mobile}</span>
+                </div>
+
+                <div className="col-span-2">
+                  <span className="text-[11px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">ঠিকানা / Address</span>
+                  <span className="text-[13px] text-zinc-700 block leading-tight mt-1 truncate">{member.address}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-end justify-between pt-4 border-t-2 border-zinc-200 mt-2 text-zinc-500 text-[12px] relative font-sans">
+            {/* Left Block: QR Code Validation */}
+            <div className="flex items-center gap-4">
+              <img 
+                src={preloadedImages.qrCode || `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(`${window.location.protocol}//${window.location.host}/?verify-member=${member.id}`)}`}
+                alt="Verification QR Code"
+                className="w-18 h-18 object-contain rounded bg-white p-[2px] border border-zinc-200 shadow-xs shrink-0"
+              />
+              <div className="space-y-1 text-left min-w-0">
+                <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-extrabold block leading-none">VALIDATE THIS CARD</span>
+                <strong className="text-zinc-800 text-[12px] font-mono font-bold tracking-wider block leading-tight mt-1">{memberId}</strong>
+                <span className="text-[10px] text-zinc-500 block leading-none mt-1">Issue Date: <strong className="font-mono">{member.verifiedAt || member.appliedAt}</strong></span>
+              </div>
+            </div>
+
+            {/* Right Block: Signer Config */}
+            <div className="text-center w-56 shrink-0 flex flex-col items-center justify-end relative">
+              <span className="text-[11px] font-sans text-rose-600 uppercase tracking-wider block font-bold leading-none mb-1">ইস্যুকারীর স্বাক্ষর</span>
+              <div className="h-10 relative flex items-center justify-center w-full">
+                {(preloadedImages.signature || settings?.idSignerSignatureUrl) ? (
+                  <img 
+                    src={preloadedImages.signature || settings?.idSignerSignatureUrl} 
+                    alt="Signature" 
+                    className="h-10 max-w-[150px] object-contain select-none"
+                  />
+                ) : (
+                  <div className="h-8 border-b border-dashed border-zinc-300 w-36 mb-1" />
+                )}
+              </div>
+              <div className="border-t border-zinc-200 pt-1.5 w-full flex flex-col items-center select-none">
+                <span className="text-[12px] text-zinc-900 font-extrabold block tracking-wide truncate max-w-full leading-tight">{settings?.idSignerName || 'তানজিল হোসেন মুণিম'}</span>
+                <span className="text-[11px] text-zinc-700 block truncate max-w-full leading-none mt-0.5">{settings?.idSignerRoleLine1 || 'সভাপতি'}</span>
+                <span className="text-[10px] text-zinc-500 block truncate max-w-full leading-none mt-0.5">{settings?.idSignerRoleLine2 || 'সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা'}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Portal Container for Centered Single Page Printing */}
+      {createPortal(
+        <div id="member-identity-card-print-container" className="hidden print:flex">
+          <div className="printable-id-card">
+            {/* Background watermark */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-44 h-44 rounded-full border border-dashed border-rose-600/15 flex items-center justify-center pointer-events-none select-none">
+              <img
+                src="https://i.ibb.co.com/F4MKM3R2/20260527-055637.png"
+                alt="Watermark Logo"
+                className="w-28 h-28 object-contain opacity-[0.06] saturate-125"
+                referrerPolicy="no-referrer"
+                crossOrigin="anonymous"
+                onError={handleImageError}
+              />
+            </div>
+
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-zinc-200 pb-2 relative">
+              <div className="flex items-center gap-2">
+                <img
+                  src="https://i.ibb.co.com/F4MKM3R2/20260527-055637.png"
+                  alt="সমাজতান্ত্রিক ছাত্র ফ্রন্ট লোগো"
+                  className="h-8 w-8 object-contain"
+                  referrerPolicy="no-referrer"
+                  crossOrigin="anonymous"
+                  onError={handleImageError}
+                />
+                <div className="flex flex-col">
+                  <img
+                    src="https://i.ibb.co/R4BCPZ0B/20250130-143124.png"
+                    alt="সমাজতান্ত্রিক ছাত্র ফ্রন্ট"
+                    className="h-6 w-auto object-contain saturate-125 contrast-125"
+                    referrerPolicy="no-referrer"
+                    crossOrigin="anonymous"
+                    onError={handleImageError}
+                  />
+                  <p className="text-[6px] text-zinc-500 font-mono tracking-widest mt-0.5">
+                    MYMENSINGH DISTRICT
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="bg-rose-100 text-rose-700 font-sans text-[7px] font-extrabold border border-rose-200 px-1.5 py-0.5 rounded shadow-xs select-none uppercase tracking-wide">
+                  {getMemberBadgeText(member)}
+                </span>
+              </div>
+            </div>
+
+            {/* Main Body */}
+            <div className="grid grid-cols-12 gap-2 my-2 items-start relative flex-1">
+              {/* Profile Photo */}
+              <div className="col-span-3 flex flex-col items-center justify-start">
+                <div className="w-[66px] h-[82px] rounded border border-zinc-200 bg-zinc-50 flex flex-col items-center justify-center text-rose-600 relative overflow-hidden shadow-xs shrink-0">
+                  {member.photoUrl ? (
+                    <img 
+                      src={member.photoUrl} 
+                      alt={member.name} 
+                      className="w-full h-full object-cover" 
+                      referrerPolicy="no-referrer"
+                      onError={handleImageError}
+                    />
+                  ) : (
+                    <>
+                      <User className="w-6 h-6 opacity-40 text-rose-600" />
+                      <div className="absolute bottom-0 inset-x-0 bg-rose-600 text-white text-[5px] py-[1px] text-center font-bold tracking-wider uppercase font-mono">
+                        APPROVED
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Info Details */}
+              <div className="col-span-9 space-y-0.5 font-sans">
+                <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+                  <div className="col-span-2">
+                    <span className="text-[6px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">নাম / Full Name</span>
+                    <strong className="text-[9.5px] font-bold text-zinc-900 tracking-wide block leading-tight mt-0.5">{member.name}</strong>
+                  </div>
+
+                  <div>
+                    <span className="text-[6px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">শ্রেণি / Class</span>
+                    <span className="text-[8px] text-zinc-800 font-bold block leading-tight mt-0.5">{member.department || 'সদস্য'}</span>
+                  </div>
+
+                  <div>
+                    <span className="text-[6px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">রক্তের গ্রুপ / Blood</span>
+                    <span className="text-[8px] text-zinc-900 font-bold block leading-tight mt-0.5">{member.bloodGroup || 'N/A'}</span>
+                  </div>
+
+                  <div className="col-span-2">
+                    <span className="text-[6px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">শিক্ষা প্রতিষ্ঠান / Institution</span>
+                    <span className="text-[8.5px] text-zinc-800 font-semibold block leading-tight mt-0.5 truncate">{member.institution}</span>
+                  </div>
+
+                  <div className="col-span-2">
+                    <span className="text-[6px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">মোবাইল / Mobile No</span>
+                    <span className="text-[8px] font-mono text-zinc-800 font-bold block leading-tight mt-0.5">{member.mobile}</span>
+                  </div>
+
+                  <div className="col-span-2">
+                    <span className="text-[6px] text-zinc-500 uppercase tracking-widest block font-bold leading-none">ঠিকানা / Address</span>
+                    <span className="text-[7.5px] text-zinc-700 block leading-tight mt-0.5 truncate">{member.address}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-end justify-between pt-1.5 border-t border-zinc-200 mt-1 text-zinc-500 text-[7.5px] relative font-sans">
+              <div className="flex items-center gap-2">
+                <img 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`${window.location.protocol}//${window.location.host}/?verify-member=${member.id}`)}`}
+                  alt="Verification QR Code"
+                  className="w-8 h-8 object-contain rounded bg-white p-[1px] border border-zinc-200"
+                />
+                <div className="text-left">
+                  <span className="text-[5.5px] text-zinc-500 uppercase tracking-widest font-extrabold block leading-none">VALIDATE THIS CARD</span>
+                  <strong className="text-zinc-800 text-[8px] font-mono font-bold tracking-wider block leading-tight mt-0.5">{memberId}</strong>
+                  <span className="text-[6px] text-zinc-500 block leading-none mt-0.5">Issue Date: <span className="font-mono">{member.verifiedAt || member.appliedAt}</span></span>
+                </div>
+              </div>
+
+              {/* Right Signature Block */}
+              <div className="text-center w-32 shrink-0 flex flex-col items-center justify-end relative">
+                <span className="text-[6px] font-sans text-rose-600 uppercase tracking-wider block font-bold leading-none mb-0.5">ইস্যুকারীর স্বাক্ষর</span>
+                <div className="h-6 relative flex items-center justify-center w-full">
+                  {settings?.idSignerSignatureUrl ? (
+                    <img 
+                      src={settings.idSignerSignatureUrl} 
+                      alt="Signature" 
+                      className="h-5 max-w-[80px] object-contain select-none"
+                      referrerPolicy="no-referrer"
+                      crossOrigin="anonymous"
+                      onError={handleImageError}
+                    />
+                  ) : (
+                    <div className="h-5 border-b border-dashed border-zinc-300 w-20 mb-0.5" />
+                  )}
+                </div>
+                <div className="border-t border-zinc-200 pt-0.5 w-full flex flex-col items-center select-none">
+                  <span className="text-[7.5px] text-zinc-900 font-extrabold block tracking-wide truncate max-w-full leading-tight">{settings?.idSignerName || 'তানজিল হোসেন মুণিম'}</span>
+                  <span className="text-[6px] text-zinc-700 block truncate max-w-full leading-none mt-0.5">{settings?.idSignerRoleLine1 || 'সভাপতি'}</span>
+                  <span className="text-[5.5px] text-zinc-500 block truncate max-w-full leading-none mt-0.5">{settings?.idSignerRoleLine2 || 'সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Fallback Manual Download Helper Modal */}
+      {showFallbackModal && (
+        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/80 flex items-center justify-center p-4 backdrop-blur-xs font-sans">
+          <div className="bg-zinc-950 border border-rose-950/40 rounded-lg max-w-lg w-full overflow-hidden shadow-2xl">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-rose-950/40 to-zinc-900 px-6 py-4 border-b border-rose-950/30 flex justify-between items-center">
+              <h3 className="text-sm font-extrabold text-white flex items-center gap-2">
+                <Flame className="w-4 h-4 text-rose-500 animate-pulse" />
+                <span>ই-কার্ড ম্যানুয়াল ডাউনলোড প্যানেল</span>
+              </h3>
+              <button 
+                onClick={() => setShowFallbackModal(false)}
+                className="text-zinc-400 hover:text-white transition p-1 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-zinc-300 leading-relaxed">
+                ব্রাউজারের স্বয়ংক্রিয় ফাইল ডাউনলোডার সিস্টেমে সাময়িক সীমাবদ্ধতা বা সিকিউরিটি রেস্ট্রিকশনের কারণে ডাউনলোড ব্লক হয়েছে। দয়া করে নিচের ম্যানুয়াল উপায়গুলো ব্যবহার করে আপনার ই-কার্ডটি সংরক্ষণ করুন।
+              </p>
+
+              {/* Visual Preview */}
+              {fallbackImageUrl && (
+                <div className="space-y-1.5">
+                  <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">ডিজিটাল ই-কার্ড প্রিভিউ (সংরক্ষণ করার জন্য প্রস্তুত):</span>
+                  <div className="border border-zinc-800 rounded bg-zinc-900 p-2 flex justify-center">
+                    <img 
+                      src={fallbackImageUrl} 
+                      alt="Member Card Fallback Preview" 
+                      className="max-h-48 object-contain rounded shadow-lg"
+                    />
+                  </div>
+                  <p className="text-[10px] text-rose-400 text-center font-medium">
+                    💡 মোবাইল গ্রাহক হলে ছবির উপর কিছুক্ষণ চেপে ধরে (Long Press) সরাসরি গ্যালারিতে সংরক্ষণ করতে পারেন।
+                  </p>
+                </div>
+              )}
+
+              {/* Error Details */}
+              {downloadError && !validationErrors && (
+                <div className="bg-rose-950/20 border border-rose-900/30 rounded p-3 text-xs space-y-1">
+                  <span className="text-rose-500 font-bold block">🚨 ব্রাউজার ত্রুটির বিবরণ:</span>
+                  <p className="text-zinc-300 leading-relaxed font-medium">{downloadError}</p>
+                </div>
+              )}
+
+              {/* Detailed Validation Error Report */}
+              {validationErrors && validationErrors.length > 0 && (
+                <div className="bg-rose-950/25 border border-rose-900/50 rounded-lg p-3.5 space-y-2.5">
+                  <span className="text-rose-400 font-bold text-xs uppercase tracking-wider block flex items-center gap-1.5">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                    রিসোর্স লোড ব্যর্থতার বিবরণ (Resource Validation Failure)
+                  </span>
+                  <div className="space-y-2 max-h-56 overflow-y-auto">
+                    {validationErrors.map((err, idx) => (
+                      <div key={idx} className="bg-black/40 border border-rose-950/40 rounded p-2.5 space-y-1 text-[11px] font-mono">
+                        <div className="flex justify-between border-b border-rose-950/35 pb-1 text-[10px]">
+                          <span className="text-rose-300 font-bold">রিসোর্স: {err.assetName}</span>
+                          <span className="text-zinc-500">অরিজিন: {err.origin || 'Unknown'}</span>
+                        </div>
+                        <p className="text-zinc-300"><span className="text-rose-400">ব্যর্থতার কারণ:</span> {err.failureReason}</p>
+                        <p className="text-zinc-400 text-[10px] truncate"><span className="text-zinc-500">উৎস URL:</span> {err.url}</p>
+                        <div className="mt-1 pt-1 border-t border-rose-950/20 text-[10px] text-emerald-400 font-sans">
+                          <span className="font-bold">💡 সমাধান:</span> {err.suggestedFix}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Step-by-Step Live Logs */}
+              <div className="space-y-1.5">
+                <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">সিস্টেম ডাউনলোড পাইপলাইন লগ:</span>
+                <div className="bg-black/60 border border-zinc-900 rounded p-3 h-28 overflow-y-auto font-mono text-[9px] text-emerald-400 space-y-1">
+                  {downloadStepLogs.map((log, idx) => (
+                    <div key={idx} className="leading-tight">{log}</div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Manual Action Buttons */}
+              <div className="grid grid-cols-2 gap-2 pt-2">
+                <button
+                  onClick={() => {
+                    if (fallbackFormat === 'png' && fallbackBlob) {
+                      Downloader.downloadBlob(fallbackBlob, fallbackFilename);
+                    } else if (fallbackFormat === 'pdf' && fallbackPdf) {
+                      Downloader.downloadPDF(fallbackPdf, fallbackFilename);
+                    } else if (fallbackImageUrl) {
+                      const link = document.createElement('a');
+                      link.href = fallbackImageUrl;
+                      link.download = fallbackFilename;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                    }
+                  }}
+                  className="py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded text-xs cursor-pointer transition flex items-center justify-center gap-1.5 shadow-sm"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>পুনরায় ডাউনলোড চেষ্টা করুন</span>
+                </button>
+
+                <button
+                  onClick={openInNewTab}
+                  className="py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 font-bold rounded text-xs cursor-pointer transition flex items-center justify-center gap-1.5 shadow-sm"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>নতুন ট্যাবে কার্ড খুলুন</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="bg-zinc-900 px-6 py-3 border-t border-zinc-850 text-center">
+              <p className="text-[10px] text-zinc-500 font-medium">
+                সমাজতান্ত্রিক ছাত্র ফ্রন্ট ময়মনসিংহ জেলা শাখা • ডিজিটাল দপ্তর
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

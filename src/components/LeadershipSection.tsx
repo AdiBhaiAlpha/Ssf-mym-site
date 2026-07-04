@@ -31,12 +31,12 @@ export default function LeadershipSection({ settings, onViewMemberProfile }: Lea
       </div>
 
       {/* Tabs Selector Navigation */}
-      <div className="flex border-b border-zinc-200 dark:border-zinc-800 mb-8 max-w-2xl mx-auto text-xs sm:text-sm font-semibold">
+      <div className="flex flex-wrap sm:flex-nowrap gap-1 border-b border-zinc-200 dark:border-zinc-800 mb-8 max-w-2xl mx-auto text-xs sm:text-sm font-semibold">
         <button
           onClick={() => setActiveCommittee('district')}
-          className={`flex-1 text-center py-3 border-b-2 transition cursor-pointer ${
+          className={`flex-1 text-center py-3 px-2 border-b-2 transition cursor-pointer ${
             activeCommittee === 'district'
-              ? 'border-rose-600 text-rose-600 dark:text-rose-400'
+              ? 'border-rose-600 text-rose-600 dark:text-rose-400 font-bold'
               : 'border-transparent text-zinc-505 hover:text-zinc-850 dark:hover:text-white'
           }`}
         >
@@ -44,9 +44,9 @@ export default function LeadershipSection({ settings, onViewMemberProfile }: Lea
         </button>
         <button
           onClick={() => setActiveCommittee('executive')}
-          className={`flex-1 text-center py-3 border-b-2 transition cursor-pointer ${
+          className={`flex-1 text-center py-3 px-2 border-b-2 transition cursor-pointer ${
             activeCommittee === 'executive'
-              ? 'border-rose-600 text-rose-600 dark:text-rose-400'
+              ? 'border-rose-600 text-rose-600 dark:text-rose-400 font-bold'
               : 'border-transparent text-zinc-550 hover:text-zinc-850 dark:hover:text-white'
           }`}
         >
@@ -54,9 +54,9 @@ export default function LeadershipSection({ settings, onViewMemberProfile }: Lea
         </button>
         <button
           onClick={() => setActiveCommittee('units')}
-          className={`flex-1 text-center py-3 border-b-2 transition cursor-pointer ${
+          className={`flex-1 text-center py-3 px-2 border-b-2 transition cursor-pointer ${
             activeCommittee === 'units'
-              ? 'border-rose-600 text-rose-600 dark:text-rose-400'
+              ? 'border-rose-600 text-rose-600 dark:text-rose-400 font-bold'
               : 'border-transparent text-zinc-550 hover:text-zinc-850 dark:hover:text-white'
           }`}
         >
@@ -64,9 +64,9 @@ export default function LeadershipSection({ settings, onViewMemberProfile }: Lea
         </button>
         <button
           onClick={() => setActiveCommittee('former')}
-          className={`flex-1 text-center py-3 border-b-2 transition cursor-pointer ${
+          className={`flex-1 text-center py-3 px-2 border-b-2 transition cursor-pointer ${
             activeCommittee === 'former'
-              ? 'border-rose-600 text-rose-600 dark:text-rose-400'
+              ? 'border-rose-600 text-rose-600 dark:text-rose-400 font-bold'
               : 'border-transparent text-zinc-550 hover:text-zinc-850 dark:hover:text-white'
           }`}
         >

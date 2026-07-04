@@ -8,9 +8,10 @@ interface PublicationsSectionProps {
   books: Book[];
   onDownloadBook: (bookId: string) => Promise<boolean>;
   isVerifiedMember?: boolean;
+  onSelectItem?: (type: string, id: string) => void;
 }
 
-export default function PublicationsSection({ books, onDownloadBook, isVerifiedMember = false }: PublicationsSectionProps) {
+export default function PublicationsSection({ books, onDownloadBook, isVerifiedMember = false, onSelectItem }: PublicationsSectionProps) {
   const [activeFilter, setActiveFilter] = useState<'all' | 'book' | 'magazine' | 'study-material'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [readingBook, setReadingBook] = useState<Book | null>(null);
@@ -44,7 +45,7 @@ export default function PublicationsSection({ books, onDownloadBook, isVerifiedM
       };
 
       updateSEOMetadata({
-        title: `${readingBook.title} | সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা`,
+        title: `${readingBook.title} | political education and study circles`,
         description: cleanDesc,
         image: readingBook.coverUrl,
         type: 'book',
@@ -56,12 +57,21 @@ export default function PublicationsSection({ books, onDownloadBook, isVerifiedM
       window.history.replaceState(null, '', baseUrl);
 
       updateSEOMetadata({
-        title: "শিক্ষা ও প্রকাশনা | সমাজতান্ত্রিক ছাত্র ফ্রন্ট, ময়মনসিংহ জেলা শাখা",
+        title: "শিক্ষা ও প্রকাশনা | publications segment",
         description: "মার্ক্সীয় দর্শন, পুঁজিবাদবিরোধী লড়াই, রাজনৈতিক প্রবন্ধ, বিপ্লবী ইতিহাস এবং সমাজতান্ত্রিক ছাত্র ফ্রন্টের বিভিন্ন বৈপ্লবিক ও তাত্ত্বিক প্রকাশনাসমূহ।",
         type: 'website',
         url: baseUrl
       });
     }
+  }, [readingBook]);
+
+  // Automatically scroll to the top of the reading panel/window when a book is selected for reading or deselected
+  useEffect(() => {
+    window.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: 'instant'
+    });
   }, [readingBook]);
 
   // Deep linking support for crawler indexing
@@ -108,13 +118,13 @@ export default function PublicationsSection({ books, onDownloadBook, isVerifiedM
 
   // Mock content display for simulated interactive PDF reading
   const mockPages = [
-    { page: 1, title: 'সূচিপত্র ও প্রস্তাবনা', text: 'শিক্ষা হলো মানুষের মানবিক গুণাবলীর সামগ্রিক বিকাশ সাধনকারী মাধ্যম। যখন পুঁজিবাদ শিক্ষাকে পণ্যে রূপান্তর করেছে, তখন এই আন্দোলনের আবশ্যকতা অনস্বীকার্য।... প্রগতিশীল চিন্তা ছাড়া নৈতিক চরিত্রের সুদৃঢ় ভিত্তি দাঁড়াতে পারে না।' },
-    { page: 2, title: 'অধ্যায় ১: সমাজ ও সভ্যতা', text: 'ঐতিহাসিক বস্তুবাদী দৃষ্টিভঙ্গি নির্দেশ করে যে প্রতিটি সমাজ পরিবর্তনের গভীরে অর্থনৈতিক উৎপাদন সম্পর্কের ভূমিকা রয়েছে। দাস প্রথা থেকে শুরু করে সামন্ত প্রথার এবং তৎপরবর্তী বর্তমান বুর্জোয়া সমাজের সংকটসমূহ সমাজতান্ত্রিক বিপ্লবের দিকেই দিকনির্দেশ করে।' },
-    { page: 3, title: 'অধ্যায় ২: ৪ দফা দাবিনামা', text: '১. সর্বজনীন একমুখী অবৈতনিক শিক্ষা ব্যবস্থা প্রবর্তন। ২. আনন্দ মোহন কলেজের তীব্র ছাত্র আবাসন সংকট রাজনৈতিক দখলদারিত্বমুক্ত করে নিরসন করা। ৩. গবেষণা পরিদপ্তর ও বিশ্বকোষীয় লাইব্রেরী আধুনিকায়ন। ৪. শিক্ষাক্ষেত্রে বাণিজ্যিক ঋণের নামে কুক্ষিগতকরণ চক্রান্ত প্রত্যাহার।' }
+    { page: 1, title: 'সূচিপত্র ও প্রস্তাবনা', text: 'শিক্ষা হলো মানুষের মানবিক গুণাবলীর সামগ্রিক বিকাশ সাধনকারী মাধ্যম। প্রতিটি শিক্ষার্থীর মেধা ও সৃজনশীলতার বিকাশ ঘটিয়ে তাকে একজন দেশপ্রেমিক ও প্রগতিশীল নাগরিক হিসেবে গড়ে তোলার লক্ষ্যেই ছাত্র ফ্রন্টের শিক্ষা আন্দোলন পরিচালিত।' },
+    { page: 2, title: 'প্রথম অধ্যায়ঃ প্রগতির সংগ্রাম', text: 'ইতিহাসের প্রতিটি বাঁকে ছাত্রসমাজ সমাজ পরিবর্তনের লড়াইয়ে গুরুত্বপূর্ণ ভূমিকা পালন করেছে। ১৯৫২-র ভাষা আন্দোলন, ৬২-র শিক্ষা আন্দোলন, ৬৯-এর গণঅভ্যুত্থান এবং ৯০-এর স্বৈরাচার বিরোধী আন্দোলনে ছাত্র ফ্রন্টের সংগ্রামী ধারা অব্যাহত ছিল।' },
+    { page: 3, title: 'দ্বিতীয় অধ্যায়ঃ সাম্রাজ্যবাদ ও শিক্ষা আন্দোলন', text: 'আজকের দিনে বিশ্ব পুঁজিবাদের করাল গ্রাসে শিক্ষাকে একটি বাণিজ্যিক পণ্যে রূপান্তর করার চক্রান্ত চলছে। এর বিরুদ্ধে আমাদের লড়াই হলো একটি বৈষম্যহীন, গণমুখী ও বিজ্ঞানমনস্ক সমাজতান্ত্রিক শিক্ষাব্যবস্থার প্রতিষ্ঠার লড়াই।' }
   ];
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 font-sans">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 font-sans animate-fade-in">
       
       {/* Search Header */}
       <div className="border-b border-zinc-200 dark:border-zinc-805 pb-5 mb-8 flex flex-col md:flex-row md:items-center justify-between gap-5">
@@ -170,7 +180,14 @@ export default function PublicationsSection({ books, onDownloadBook, isVerifiedM
           return (
             <div
               key={book.id}
-              className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded-sm overflow-hidden flex flex-col p-5 hover:border-rose-400/40 transition duration-300 shadow-xs group"
+              onClick={() => {
+                if (onSelectItem) {
+                  onSelectItem('publication', book.id);
+                } else {
+                  handleRead(book);
+                }
+              }}
+              className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded-sm overflow-hidden flex flex-col p-5 hover:border-rose-450/50 hover:shadow-md transition duration-300 shadow-xs group cursor-pointer"
             >
               <div className="flex gap-4">
                 {/* Book Cover Image */}
@@ -186,21 +203,21 @@ export default function PublicationsSection({ books, onDownloadBook, isVerifiedM
                 {/* Info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center flex-wrap gap-1.5">
-                    <span className="text-[9px] font-bold text-rose-600 bg-rose-50 dark:bg-rose-950/40 dark:text-rose-400 px-1.5 py-0.5 rounded font-mono uppercase">
+                    <span className="text-[9px] font-bold text-rose-600 bg-rose-50 dark:bg-rose-955/40 dark:text-rose-400 px-1.5 py-0.5 rounded font-mono uppercase">
                       {book.type === 'book' ? 'তাত্ত্বিক পুস্তিকা' : book.type === 'magazine' ? 'বুলেটিন' : 'শিক্ষা মেটেরিয়াল'}
                     </span>
                     {book.isPrivate && (
                       <span className={`text-[8px] font-bold tracking-tight px-1.5 py-0.5 rounded ${
                         isVerifiedMember
                           ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                          : 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-500 border border-amber-500/20'
+                          : 'bg-amber-50 dark:bg-amber-955/30 text-amber-600 dark:text-amber-500 border border-amber-500/20'
                       }`}>
                         {isVerifiedMember ? '● অনুমোদিত অ্যাক্সেস' : '🔒 শুধুমাত্র সদস্য'}
                       </span>
                     )}
                   </div>
                   
-                  <h3 className="text-sm font-bold text-zinc-900 dark:text-white mt-2 leading-snug truncate group-hover:text-rose-600 dark:group-hover:text-rose-450 transition flex items-center gap-1" title={book.title}>
+                  <h3 className="text-sm font-bold text-zinc-900 dark:text-white mt-2 leading-snug truncate group-hover:text-rose-650 dark:group-hover:text-rose-455 transition flex items-center gap-1" title={book.title}>
                     {book.isPrivate && !isVerifiedMember && <Lock className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
                     <span>{book.title}</span>
                   </h3>
@@ -218,7 +235,7 @@ export default function PublicationsSection({ books, onDownloadBook, isVerifiedM
               {/* Bottom bar and Buttons */}
               <div className="grid grid-cols-2 gap-2 mt-5 pt-4 border-t border-zinc-100 dark:border-zinc-900 text-xs">
                 <button
-                  onClick={() => handleRead(book)}
+                  onClick={(e) => { e.stopPropagation(); handleRead(book); }}
                   className="flex items-center justify-center space-x-1 py-1.5 bg-zinc-100 dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-250 dark:hover:bg-zinc-800 rounded font-semibold transition"
                 >
                   <Eye className="w-3.5 h-3.5" />
@@ -226,7 +243,7 @@ export default function PublicationsSection({ books, onDownloadBook, isVerifiedM
                 </button>
 
                 <button
-                  onClick={() => handleDownload(book)}
+                  onClick={(e) => { e.stopPropagation(); handleDownload(book); }}
                   className="flex items-center justify-center space-x-1 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded font-semibold transition"
                 >
                   <Download className="w-3.5 h-3.5" />
@@ -333,7 +350,7 @@ export default function PublicationsSection({ books, onDownloadBook, isVerifiedM
               </div>
 
               {/* Reader pages simulator / Real PDF Iframe Viewer */}
-              <div className="flex-1 overflow-hidden relative bg-zinc-250 dark:bg-zinc-950 flex flex-col">
+              <div className="flex-1 overflow-hidden relative bg-zinc-250 dark:bg-zinc-955 flex flex-col">
                 {readingBook.pdfUrl && readingBook.pdfUrl !== '#' && readingBook.pdfUrl !== '' ? (
                   <iframe 
                     src={readingBook.pdfUrl}
@@ -341,7 +358,7 @@ export default function PublicationsSection({ books, onDownloadBook, isVerifiedM
                     title={readingBook.title}
                   />
                 ) : (
-                  <div className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-8">
+                  <div className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-8 bg-zinc-100 dark:bg-zinc-950">
                     <div className="bg-rose-100 dark:bg-rose-950/20 text-rose-800 dark:text-rose-400 px-4 py-2 border-l-4 border-rose-600 text-xs rounded-sm mb-6 flex items-start space-x-1.5 leading-normal">
                       <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                       <span>এটি সমাজতান্ত্রিক ছাত্র ফ্রন্টের অভ্যন্তরীণ রাজনৈতিক শিক্ষা উপকরণের প্রথম খসড়া। শিক্ষাদানের স্বার্থে শিক্ষার্থীদের বিনামূল্যে বিতরণের জন্য সংরক্ষিত।</span>
@@ -386,7 +403,7 @@ export default function PublicationsSection({ books, onDownloadBook, isVerifiedM
       <AnimatePresence>
         {restrictedBook && (
           <div id="restricted-book-modal" className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-xs">
-            <div className="bg-zinc-950 border border-amber-900/40 p-6 sm:p-8 max-w-md w-full rounded-lg shadow-2xl overflow-hidden relative flex flex-col items-center text-center space-y-4">
+            <div className="bg-zinc-955 border border-amber-900/40 p-6 sm:p-8 max-w-md w-full rounded-lg shadow-2xl overflow-hidden relative flex flex-col items-center text-center space-y-4">
               <div className="absolute top-0 right-0 w-44 h-44 bg-amber-500/5 blur-[50px] rounded-full pointer-events-none" />
               
               <Lock className="w-12 h-12 text-amber-500 animate-pulse" />

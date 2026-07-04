@@ -89,7 +89,7 @@ export interface GalleryItem {
   id: string;
   title: string;
   url: string;
-  type: 'photo' | 'poster' | 'infographic' | 'video' | 'gif' | 'audio';
+  type: 'photo' | 'poster' | 'infographic' | 'political-program' | 'video' | 'gif' | 'audio';
   date: string;
 }
 

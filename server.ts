@@ -1,9 +1,11 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import multer from 'multer';
 import { createServer as createViteServer } from 'vite';
 import { getInitialDBState, AppDatabase } from './src/server/db-initial';
+import { renderPhotoCardServerSide } from './src/server/card-renderer';
 
 const DB_PATH = path.join(process.cwd(), 'db.json');
 
@@ -201,6 +203,36 @@ async function startServer() {
     res.json({ url: publicUrl, originalName: req.file.originalname, size: req.file.size });
   });
 
+  // Server-side Photo Card rendering endpoint
+  app.post('/api/render-card', async (req, res) => {
+    try {
+      const { item, settings } = req.body;
+      if (!item) {
+        return res.status(400).json({ error: 'Article item data is required' });
+      }
+      if (!settings) {
+        return res.status(400).json({ error: 'Rendering settings are required' });
+      }
+
+      const requestHost = req.get('host') || 'localhost:3000';
+
+      const result = await renderPhotoCardServerSide({
+        item,
+        settings,
+        requestHost,
+      });
+
+      res.json(result);
+    } catch (err: any) {
+      console.error('Server-side rendering failure:', err);
+      res.status(500).json({
+        error: 'গ্রুপ কার্ড রেন্ডারিং ব্যর্থ হয়েছে (Server rendering failed)',
+        details: err.message,
+        stack: err.stack,
+      });
+    }
+  });
+
   // Profile picture upload (stores in individual folder name-wise)
   app.post('/api/upload-profile-photo', uploadProfile.single('file'), (req, res) => {
     if (!req.file) {
@@ -231,7 +263,13 @@ async function startServer() {
         }
       }
 
-      const response = await fetch(imageUrl);
+      const response = await fetch(imageUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9'
+        }
+      });
       if (!response.ok) {
         return res.status(400).json({ error: 'প্রদত্ত লিংক থেকে ছবি ডাউনলোড করা যায়নি।' });
       }
@@ -265,7 +303,13 @@ async function startServer() {
       return res.status(400).send('URL is required');
     }
     try {
-      const response = await fetch(imageUrl);
+      const response = await fetch(imageUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9'
+        }
+      });
       if (!response.ok) {
         return res.status(400).send('Failed to fetch image');
       }
@@ -1506,6 +1550,107 @@ Sitemap: ${proto}://${host}/sitemap.xml`);
 
     saveDatabase(db);
     res.json(db.settings);
+  });
+
+  // API Route - Proxy external images to prevent CORS taint and implement caching
+  app.get('/api/proxy-image', async (req, res) => {
+    const imageUrl = req.query.url as string;
+    if (!imageUrl) {
+      return res.status(400).send('Missing url parameter');
+    }
+
+    try {
+      const parsedUrl = new URL(imageUrl);
+      if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+        return res.status(400).send('Invalid protocol: protocol must be http or https');
+      }
+
+      // 1. Calculate cache key: SHA256(imageUrl)
+      const hash = crypto.createHash('sha256').update(imageUrl).digest('hex');
+      const cacheDir = path.join(process.cwd(), 'public', 'cache');
+      
+      // Ensure cache directory exists
+      if (!fs.existsSync(cacheDir)) {
+        fs.mkdirSync(cacheDir, { recursive: true });
+      }
+
+      const cachePath = path.join(cacheDir, hash);
+      const metaPath = path.join(cacheDir, `${hash}.json`);
+
+      // 2. Check if cache exists and is less than 30 days old
+      let useCache = false;
+      if (fs.existsSync(cachePath) && fs.existsSync(metaPath)) {
+        try {
+          const stats = fs.statSync(cachePath);
+          const ageInDays = (Date.now() - stats.mtimeMs) / (1000 * 60 * 60 * 24);
+          if (ageInDays < 30) {
+            useCache = true;
+          }
+        } catch (err) {
+          console.warn('[Proxy] Error reading cache file stats:', err);
+        }
+      }
+
+      if (useCache) {
+        console.log(`[Proxy] Cache HIT for: ${imageUrl} (Hash: ${hash})`);
+        try {
+          const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+          const buffer = fs.readFileSync(cachePath);
+
+          res.setHeader('Content-Type', meta.contentType || 'image/png');
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Cache-Control', 'public, max-age=2592000'); // Cache for 30 days in browser too
+          res.setHeader('X-Cache', 'HIT');
+          return res.send(buffer);
+        } catch (cacheReadErr) {
+          console.error('[Proxy] Failed to read cached image, falling back to download:', cacheReadErr);
+        }
+      }
+
+      // 3. Cache Miss - Download & Validate image
+      console.log(`[Proxy] Cache MISS. Fetching external image: ${imageUrl}`);
+      const response = await fetch(imageUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+      });
+
+      if (!response.ok) {
+        console.error(`[Proxy] Failed to fetch remote image. HTTP Status: ${response.status}`);
+        return res.status(response.status).send(`Image could not be loaded: ${imageUrl} (Status: ${response.status})`);
+      }
+
+      const contentType = response.headers.get('content-type') || 'image/png';
+      if (!contentType.startsWith('image/')) {
+        console.error(`[Proxy] Invalid MIME type fetched: ${contentType}`);
+        return res.status(400).send(`Image could not be loaded: ${imageUrl} (Invalid MIME type: ${contentType})`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      // Save to cache
+      try {
+        fs.writeFileSync(cachePath, buffer);
+        fs.writeFileSync(metaPath, JSON.stringify({
+          originalUrl: imageUrl,
+          contentType,
+          timestamp: Date.now()
+        }, null, 2));
+        console.log(`[Proxy] Successfully saved image to cache: ${hash}`);
+      } catch (saveErr) {
+        console.error('[Proxy] Failed to write image to disk cache:', saveErr);
+      }
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cache-Control', 'public, max-age=2592000'); // Cache for 30 days
+      res.setHeader('X-Cache', 'MISS');
+      res.send(buffer);
+    } catch (err: any) {
+      console.error('[Proxy] Error proxying image:', err);
+      res.status(500).send(`Error proxying image: ${err.message}`);
+    }
   });
 
   // Get all organizations

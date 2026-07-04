@@ -4,6 +4,7 @@ import { GalleryItem } from '../types';
 
 interface MediaCenterProps {
   gallery: GalleryItem[];
+  onSelectItem?: (type: string, id: string) => void;
 }
 
 const getYouTubeId = (url: string) => {
@@ -18,8 +19,8 @@ const getEmbedUrl = (url: string) => {
   return ytId ? `https://www.youtube.com/embed/${ytId}` : url;
 };
 
-export default function MediaCenter({ gallery }: MediaCenterProps) {
-  const [activeTab, setActiveTab] = useState<'all' | 'photo' | 'poster' | 'infographic' | 'video' | 'gif' | 'audio'>('all');
+export default function MediaCenter({ gallery, onSelectItem }: MediaCenterProps) {
+  const [activeTab, setActiveTab] = useState<'all' | 'photo' | 'poster' | 'infographic' | 'political-program' | 'video' | 'gif' | 'audio'>('all');
   const [focusImage, setFocusImage] = useState<GalleryItem | null>(null);
 
   const filteredMedia = gallery.filter((item) => activeTab === 'all' || item.type === activeTab);
@@ -45,6 +46,7 @@ export default function MediaCenter({ gallery }: MediaCenterProps) {
           { key: 'photo', label: 'আন্দোলনের আলোকচিত্র' },
           { key: 'poster', label: 'বিপ্লবী পোস্টার আর্কাইভ' },
           { key: 'infographic', label: 'রাজনৈতিক ইনফোগ্রাফিক্স' },
+          { key: 'political-program', label: 'রাজনৈতিক কর্মসূচী' },
           { key: 'video', label: 'ভিডিও ফুটেজ' },
           { key: 'gif', label: 'জিআইএফ (GIF)' },
           { key: 'audio', label: 'বিপ্লবী সঙ্গীত ও সমাজ-কথা' }
@@ -68,31 +70,36 @@ export default function MediaCenter({ gallery }: MediaCenterProps) {
         {filteredMedia.map((item) => (
           <div
             key={item.id}
-            className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded overflow-hidden group shadow-xs transition hover:shadow-md"
+            onClick={() => {
+              if (onSelectItem) {
+                onSelectItem('media', item.id);
+              }
+            }}
+            className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded overflow-hidden group shadow-xs transition hover:shadow-md flex flex-col justify-between cursor-pointer hover:border-rose-450"
           >
             {/* Visual Screen Container */}
-            <div className="relative aspect-square overflow-hidden bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center">
+            <div className="relative overflow-hidden bg-zinc-50 dark:bg-zinc-900/30 flex items-center justify-center p-2 min-h-[220px]">
               {item.type === 'video' ? (
                 getYouTubeId(item.url) ? (
                   <img
                     src={`https://img.youtube.com/vi/${getYouTubeId(item.url)}/0.jpg`}
                     alt={item.title}
                     referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-103"
+                    className="max-w-full h-auto max-h-[300px] object-contain rounded transition-transform duration-500 group-hover:scale-102"
                   />
                 ) : (
-                  <div className="w-full h-full bg-zinc-900 border border-zinc-800 flex flex-col items-center justify-center text-zinc-500 relative">
+                  <div className="w-full min-h-[220px] bg-zinc-900 border border-zinc-800 flex flex-col items-center justify-center text-zinc-500 relative rounded">
                     <Film className="w-12 h-12 text-rose-600 mb-2" />
-                    <span className="text-[11px] font-mono uppercase tracking-widest text-zinc-400">ভিডিও ফাইল</span>
+                    <span className="text-[11px] font-mono uppercase tracking-widest text-zinc-400 font-bold">ভিডিও ফাইল</span>
                     <Play className="w-10 h-10 text-white absolute bg-rose-600/90 rounded-full p-2.5 shadow" />
                   </div>
                 )
               ) : item.type === 'audio' ? (
-                <div className="w-full h-full bg-zinc-900 dark:bg-zinc-950 border border-zinc-800 flex flex-col items-center justify-center text-zinc-500 relative">
+                <div className="w-full min-h-[220px] bg-zinc-900 dark:bg-zinc-955 border border-zinc-800 flex flex-col items-center justify-center text-zinc-500 relative rounded">
                   <div className="w-24 h-24 rounded-full border border-zinc-800 bg-zinc-800/40 flex items-center justify-center">
                     <Music className="w-10 h-10 text-rose-500" />
                   </div>
-                  <span className="text-[11px] font-mono uppercase tracking-widest text-zinc-400 mt-3">অডিও/বিপ্লবী গান</span>
+                  <span className="text-[11px] font-mono uppercase tracking-widest text-zinc-400 mt-3 font-bold">অডিও/বিপ্লবী গান</span>
                   <Play className="w-10 h-10 text-white absolute bg-zinc-800/95 border border-zinc-700 rounded-full p-2.5 shadow" />
                 </div>
               ) : (
@@ -100,7 +107,7 @@ export default function MediaCenter({ gallery }: MediaCenterProps) {
                   src={item.url}
                   alt={item.title}
                   referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-103"
+                  className="max-w-full h-auto max-h-[300px] object-contain rounded transition-transform duration-500 group-hover:scale-102"
                 />
               )}
 
@@ -129,12 +136,14 @@ export default function MediaCenter({ gallery }: MediaCenterProps) {
               <span className={`absolute top-3 left-3 text-[9px] uppercase tracking-wider font-bold text-white px-2 py-0.5 rounded z-10 ${
                 item.type === 'poster' ? 'bg-rose-600' :
                 item.type === 'infographic' ? 'bg-purple-600' :
+                item.type === 'political-program' ? 'bg-amber-700' :
                 item.type === 'video' ? 'bg-amber-600' :
                 item.type === 'audio' ? 'bg-blue-600' :
                 item.type === 'gif' ? 'bg-pink-600' : 'bg-emerald-600'
               }`}>
                 {item.type === 'poster' ? 'পোস্টার' :
                  item.type === 'infographic' ? 'ইনফোগ্রাফিক' :
+                 item.type === 'political-program' ? 'রাজনৈতিক কর্মসূচী' :
                  item.type === 'video' ? 'ভিডিও ফুটেজ' :
                  item.type === 'audio' ? 'সঙ্গীত/বক্তব্য' :
                  item.type === 'gif' ? 'জিআইএফ (GIF)' : 'ফটোগ্রাফ'}
@@ -142,8 +151,8 @@ export default function MediaCenter({ gallery }: MediaCenterProps) {
             </div>
 
             {/* Description Text fields */}
-            <div className="p-4">
-              <h3 className="text-xs sm:text-sm font-bold text-zinc-850 dark:text-zinc-200 truncate group-hover:text-rose-600 dark:group-hover:text-rose-450 transition">
+            <div className="p-4 border-t border-zinc-100 dark:border-zinc-900 bg-white dark:bg-zinc-950">
+              <h3 className="text-xs sm:text-sm font-bold text-zinc-850 dark:text-zinc-200 group-hover:text-rose-600 dark:group-hover:text-rose-450 transition break-words whitespace-normal leading-snug">
                 {item.title}
               </h3>
               <p className="text-[10px] text-zinc-400 font-mono mt-1">{item.date}</p>
