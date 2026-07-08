@@ -123,6 +123,11 @@ export interface MemberRegistration {
   editHistory?: EditHistoryEntry[];
   resetRequested?: boolean;
   resetApproved?: boolean;
+  emailVerified?: boolean;
+  verifiedMethod?: string;
+  googleUid?: string;
+  googleEmail?: string;
+  googlePhoto?: string;
 }
 
 export interface AuditLog {

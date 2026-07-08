@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore, doc, getDoc, getDocs, setDoc, deleteDoc, collection } from 'firebase/firestore';
 import { getInitialDBState, AppDatabase } from './server/db-initial';
 
@@ -8,6 +8,22 @@ import firebaseConfig from '../firebase-applet-config.json';
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
+
+// Secondary Firebase credentials for Google Authentication
+const secondaryFirebaseConfig = {
+  apiKey: "AIzaSyBIuJFn74hJK1LT_Shcl-Y5DMgiOArB8Ps",
+  authDomain: "shipu-ai.firebaseapp.com",
+  projectId: "shipu-ai",
+  storageBucket: "shipu-ai.firebasestorage.app",
+  messagingSenderId: "953122849300",
+  appId: "1:953122849300:web:f821f1a161ce7879001d01",
+  measurementId: "G-N2WMSS3MNG"
+};
+
+export const secondaryApp = initializeApp(secondaryFirebaseConfig, "secondary");
+export const secondaryAuth = getAuth(secondaryApp);
+export const secondaryGoogleProvider = new GoogleAuthProvider();
+secondaryGoogleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export enum OperationType {
   CREATE = 'create',

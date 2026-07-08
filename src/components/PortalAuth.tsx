@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Mail, Key, ShieldCheck, ShieldAlert, Sparkles, RefreshCw, Undo2, Lock } from 'lucide-react';
 import { MemberRegistration } from '../types';
-import { saveFirestoreDoc } from '../firebase';
+import { saveFirestoreDoc, secondaryAuth, secondaryGoogleProvider } from '../firebase';
+import { signInWithPopup } from 'firebase/auth';
 
 interface PortalAuthProps {
   memberships: MemberRegistration[];
@@ -17,6 +18,64 @@ export default function PortalAuth({ memberships, onLogin }: PortalAuthProps) {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const handleGoogleSignIn = async () => {
+    setErrorMsg('');
+    setSuccessMsg('');
+    setLoading(true);
+
+    try {
+      const result = await signInWithPopup(secondaryAuth, secondaryGoogleProvider);
+      const user = result.user;
+      if (!user || !user.email) {
+        throw new Error('Google অ্যাকাউন্ট থেকে কোনো ইমেইল পাওয়া যায়নি।');
+      }
+
+      const cleanEmail = user.email.trim().toLowerCase();
+
+      // Check admin login
+      if (cleanEmail === 'chitronbhattacharjee@gmail.com') {
+        onLogin(cleanEmail);
+        setLoading(false);
+        await logMemberLoginDirect(cleanEmail, 'success_google', 'গুগল দিয়ে লগইন করে সফলভাবে সুপার এডমিন সেশন চালু করা হয়েছে।');
+        return;
+      }
+
+      const matched = memberships.find(m => m.email?.toLowerCase() === cleanEmail);
+
+      if (!matched) {
+        setErrorMsg('দুঃখিত, এই Google ইমেইলের বিপরীতে আমাদের ডাটাবেজে কোনো সদস্যপদ পাওয়া যায়নি। অনুগ্রহ করে প্রথমে "সদস্য হতে আবেদন করুন" ফর্ম দিয়ে আবেদন সম্পন্ন করুন।');
+        setLoading(false);
+        await logMemberLoginDirect(cleanEmail, 'failed_google', 'গুগল দিয়ে অনিবন্ধিত ইমেইলে পোর্টাল লগইনের ব্যর্থ চেষ্টা।');
+        return;
+      }
+
+      if (matched.status === 'pending') {
+        setErrorMsg('আপনার মেম্বারশিপ আবেদনটি এখনও জেলা দপ্তরে প্রক্রিয়াধীন (Pending) আছে। এটি অনুমোদিত হওয়ার পরে গুগল দিয়ে সরাসরি লগইন করতে পারবেন।');
+        setLoading(false);
+        await logMemberLoginDirect(matched.email, 'failed_google', 'গুগল পোর্টাল লগইন চেষ্টা কিন্তু মেম্বারশিপ স্ট্যাটাস এখনও অপেক্ষারত (Pending)।');
+        return;
+      }
+
+      if (matched.status === 'rejected') {
+        setErrorMsg('দুঃখিত, আপনার সদস্য ফর্ম জেলা প্যানেল দ্বারা বাতিল বা প্রত্যাখ্যাত করা হয়েছে।');
+        setLoading(false);
+        await logMemberLoginDirect(matched.email, 'failed_google', 'গুগল দিয়ে প্রত্যাখ্যাত আবেদন নিয়ে পোর্টাল লগইন চেষ্টা।');
+        return;
+      }
+
+      if (matched.status === 'verified') {
+        // Success login
+        onLogin(matched.email);
+        setLoading(false);
+        await logMemberLoginDirect(matched.email, 'success_google', `সদস্য "${matched.name}" গুগল পোর্টাল দিয়ে সিস্টেমে সফল লগইন করেছেন।`);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || 'গুগল দিয়ে লগইন করার সময় কোনো ত্রুটি ঘটেছে। পুনরায় চেষ্টা করুন।');
+      setLoading(false);
+    }
+  };
 
   const logMemberLoginDirect = async (email: string, status: string, details: string) => {
     const payload = {
@@ -318,6 +377,27 @@ export default function PortalAuth({ memberships, onLogin }: PortalAuthProps) {
           >
             {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
             <span>কমরেড ভেরিফাইড পোর্টাল লগইন</span>
+          </button>
+
+          <div className="relative flex py-1 items-center">
+            <div className="flex-grow border-t border-zinc-200 dark:border-zinc-800"></div>
+            <span className="flex-shrink mx-3 text-zinc-400 text-[10px] font-bold uppercase">অথবা</span>
+            <div className="flex-grow border-t border-zinc-200 dark:border-zinc-800"></div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleGoogleSignIn}
+            disabled={loading}
+            className="w-full py-2 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-850 text-zinc-700 dark:text-zinc-200 font-bold text-xs rounded transition flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+          >
+            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+              <path fill="#EA4335" d="M12 5.04c1.64 0 3.12.56 4.28 1.67l3.2-3.2C17.52 1.58 14.94 1 12 1 7.24 1 3.2 3.86 1.34 8l3.77 2.92C6.01 7.24 8.79 5.04 12 5.04z" />
+              <path fill="#4285F4" d="M23.45 12.3c0-.82-.07-1.6-.2-2.3H12v4.4h6.43c-.28 1.47-1.11 2.72-2.36 3.56l3.66 2.84c2.14-1.97 3.37-4.88 3.37-8.5z" />
+              <path fill="#FBBC05" d="M5.11 14.08c-.24-.72-.37-1.5-.37-2.3s.13-1.58.37-2.3L1.34 6.56C.48 8.28 0 10.1 0 12s.48 3.72 1.34 5.44l3.77-2.92c-.24-.44-.24-.88-.24-1.44z" />
+              <path fill="#34A853" d="M12 23c3.24 0 5.97-1.08 7.96-2.92l-3.66-2.84c-1.1.74-2.52 1.18-4.3 1.18-3.21 0-5.99-2.2-6.96-5.46l-3.77 2.92C3.2 20.14 7.24 23 12 23z" />
+            </svg>
+            <span>Google অ্যাকাউন্ট দিয়ে লগইন</span>
           </button>
         </form>
       )}

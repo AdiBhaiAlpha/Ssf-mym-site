@@ -50,6 +50,7 @@ interface AdminDashboardProps {
   onDeleteBlog: (id: string) => Promise<boolean>;
   onApproveComment: (blogId: string, commentId: string) => Promise<boolean>;
   onAddEvent: (event: Omit<Event, 'id' | 'registrants'>) => Promise<boolean>;
+  onEditEvent?: (id: string, event: Partial<Event>) => Promise<boolean>;
   onDeleteEvent: (id: string) => Promise<boolean>;
   onAddBook: (book: Omit<Book, 'id' | 'downloadCount' | 'date'>) => Promise<boolean>;
   onEditBook?: (id: string, book: Partial<Book>) => Promise<boolean>;
@@ -147,23 +148,46 @@ function FileUploader({ label, value, onChange, accept = "*/*", placeholder = "�
     setError('');
 
     try {
-      // Compress if it is an image
-      const processedFile = await compressImage(file);
+      const isImage = file.type.startsWith('image/') || file.name.match(/\.(png|jpe?g|gif|webp|bmp)$/i);
 
-      const formData = new FormData();
-      formData.append('file', processedFile);
+      if (isImage) {
+        // Compress if it is an image
+        const processedFile = await compressImage(file);
 
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData
-      });
-      if (!res.ok) throw new Error('ফাইল আপলোড ব্যর্থ হয়েছে।');
-      const contentType = res.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        throw new Error('আপনার হোস্টিং সার্ভারে ফাইল আপলোড মডিউলটি সক্রিয় নেই। অনুগ্রহ করে সরাসরি ছবির লিংক (URL) ইনপুট বক্সে লিখে সংরক্ষণ করুন।');
+        const formData = new FormData();
+        formData.append('image', processedFile);
+
+        const res = await fetch('https://api.imgbb.com/1/upload?key=3601399f318b007db7c3a8fdf499d8d0', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!res.ok) {
+          throw new Error('ImgBB-তে ছবি আপলোড ব্যর্থ হয়েছে।');
+        }
+
+        const data = await res.json();
+        if (data && data.success && data.data && data.data.url) {
+          onChange(data.data.url);
+        } else {
+          throw new Error('ImgBB থেকে ছবির সঠিক লিংক পাওয়া যায়নি।');
+        }
+      } else {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        });
+        if (!res.ok) throw new Error('ফাইল আপলোড ব্যর্থ হয়েছে।');
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          throw new Error('আপনার হোস্টিং সার্ভারে ফাইল আপলোড মডিউলটি সক্রিয় নেই। অনুগ্রহ করে সরাসরি ছবির লিংক (URL) ইনপুট বক্সে লিখে সংরক্ষণ করুন।');
+        }
+        const data = await res.json();
+        onChange(data.url);
       }
-      const data = await res.json();
-      onChange(data.url);
     } catch (err: any) {
       setError(err.message || 'আপলোড ব্যর্থ হয়েছে।');
     } finally {
@@ -223,6 +247,7 @@ export default function AdminDashboard({
   onDeleteBlog,
   onApproveComment,
   onAddEvent,
+  onEditEvent,
   onDeleteEvent,
   onAddBook,
   onEditBook,
@@ -1004,8 +1029,8 @@ export default function AdminDashboard({
     setEditingItem(item);
     setFormTitle(item.title);
     setFormContent(item.content || item.description || '');
-    setFormExcerpt(item.excerpt || '');
-    setFormCategory(item.category || item.type || '');
+    setFormExcerpt(item.excerpt || item.date || '');
+    setFormCategory(item.category || item.type || item.status || '');
     setFormAuthor(item.author || '');
     setFormImage(item.image || item.coverImage || item.url || '');
     setFormTags((item.tags || []).join(', '));
@@ -1116,6 +1141,16 @@ export default function AdminDashboard({
           title: formTitle,
           type: formCategory as any,
           url: formImage
+        });
+      } else if (activeModel === 'event' && onEditEvent) {
+        success = await onEditEvent(editingItem.id, {
+          title: formTitle,
+          description: formContent,
+          date: formExcerpt,
+          time: eventTime,
+          venue: eventVenue,
+          image: formImage,
+          status: formCategory as any || 'upcoming'
         });
       }
     } else {
@@ -1516,7 +1551,10 @@ export default function AdminDashboard({
                           <button onClick={() => setDeleteConfirm(null)} className="p-1 px-2 bg-zinc-500 text-white rounded-xs font-bold cursor-pointer font-sans">না</button>
                         </div>
                       ) : (
-                        <button onClick={() => setDeleteConfirm({ id: item.id, type: 'event' })} className="p-1 px-2.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-400 rounded text-rose-600 cursor-pointer text-[10px] min-h-[28px] flex items-center justify-center font-sans">মুছুন</button>
+                        <>
+                          <button onClick={() => handleOpenEditModal(item)} className="p-1 px-2.5 border border-zinc-250 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded text-zinc-500 dark:text-zinc-400 cursor-pointer text-[10px] min-h-[28px] flex items-center justify-center">সম্পাদনা</button>
+                          <button onClick={() => setDeleteConfirm({ id: item.id, type: 'event' })} className="p-1 px-2.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-400 rounded text-rose-600 cursor-pointer text-[10px] min-h-[28px] flex items-center justify-center font-sans">মুছুন</button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -1539,35 +1577,44 @@ export default function AdminDashboard({
                           <button onClick={() => setDeleteConfirm(null)} className="p-1 px-2 bg-zinc-500 text-white rounded-xs font-bold cursor-pointer font-sans">না</button>
                         </div>
                       ) : (
-                        <button onClick={() => setDeleteConfirm({ id: item.id, type: 'book' })} className="p-1 px-2.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-955/40 dark:text-rose-400 rounded text-rose-600 cursor-pointer text-[10px] min-h-[28px] flex items-center justify-center font-sans">মুছুন</button>
+                        <>
+                          <button onClick={() => handleOpenEditModal(item)} className="p-1 px-2.5 border border-zinc-250 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded text-zinc-500 dark:text-zinc-400 cursor-pointer text-[10px] min-h-[28px] flex items-center justify-center">সম্পাদনা</button>
+                          <button onClick={() => setDeleteConfirm({ id: item.id, type: 'book' })} className="p-1 px-2.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-955/40 dark:text-rose-400 rounded text-rose-600 cursor-pointer text-[10px] min-h-[28px] flex items-center justify-center font-sans">মুছুন</button>
+                        </>
                       )}
                     </div>
                   </div>
                 ))}
 
                 {activeModel === 'circular' && db.circulars.map((item) => (
-                  <div key={item.id} className="p-4 border border-zinc-150 dark:border-zinc-900 rounded-sm flex justify-between items-center text-xs gap-4 hover:bg-zinc-50/50">
-                    <div className="min-w-0">
-                      <span className="text-[10px] uppercase font-mono text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded font-bold">{item.category}</span>
-                      <h4 className="font-bold text-sm text-zinc-850 mt-1 truncate">{item.title}</h4>
-                      <p className="text-[10px] text-zinc-400 font-mono mt-0.5">তারিখ: {item.date}</p>
+                  <div key={item.id} className="p-4 border border-zinc-150 dark:border-zinc-900 rounded-sm flex flex-col md:flex-row md:items-center justify-between text-xs gap-4 hover:bg-zinc-50/50 dark:hover:bg-zinc-900/30 transition duration-150">
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] uppercase font-mono text-rose-600 bg-rose-50 dark:bg-rose-955/45 dark:text-rose-400 px-1.5 py-0.5 rounded font-bold">{item.category}</span>
+                      </div>
+                      <h4 className="font-bold text-sm text-zinc-850 dark:text-zinc-200 leading-snug break-words whitespace-normal">{item.title}</h4>
+                      <p className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono">তারিখ: {item.date}</p>
                     </div>
-                    <div className="flex gap-2 shrink-0 items-center">
+                    <div className="flex flex-wrap gap-2 shrink-0 items-center w-full md:w-auto justify-start md:justify-end border-t md:border-t-0 pt-3 md:pt-0 border-zinc-100 dark:border-zinc-900">
                       {deleteConfirm?.id === item.id && deleteConfirm?.type === 'circular' ? (
-                        <div className="flex items-center gap-1 bg-rose-50 dark:bg-rose-955 px-1.5 py-0.5 border border-rose-200 dark:border-rose-900 rounded-xs">
-                          <button onClick={() => { onDeleteCircular(item.id); setDeleteConfirm(null); }} className="p-1 text-[10px] bg-rose-600 text-white rounded-xs font-bold cursor-pointer">হ্যাঁ</button>
-                          <button onClick={() => setDeleteConfirm(null)} className="p-1 text-[10px] bg-zinc-500 text-white rounded-xs font-bold cursor-pointer">না</button>
+                        <div className="flex items-center gap-1.5 bg-rose-50 dark:bg-rose-955/40 px-2 py-0.5 border border-rose-200 dark:border-rose-900 rounded-xs min-h-[28px]">
+                          <span className="text-[10px] text-rose-600 dark:text-rose-400 font-bold mr-1">নিশ্চিত?</span>
+                          <button onClick={() => { onDeleteCircular(item.id); setDeleteConfirm(null); }} className="p-1 px-2 text-[10px] bg-rose-600 text-white rounded-xs font-bold cursor-pointer font-sans">হ্যাঁ</button>
+                          <button onClick={() => setDeleteConfirm(null)} className="p-1 px-2 bg-zinc-500 text-white rounded-xs font-bold cursor-pointer font-sans">না</button>
                         </div>
                       ) : (
-                        <button onClick={() => setDeleteConfirm({ id: item.id, type: 'circular' })} className="p-1 px-2 bg-rose-50 hover:bg-rose-100 rounded text-rose-600 cursor-pointer">মুছুন</button>
+                        <>
+                          <button onClick={() => handleOpenEditModal(item)} className="p-1 px-2.5 border border-zinc-250 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded text-zinc-500 dark:text-zinc-400 cursor-pointer text-[10px] min-h-[28px] flex items-center justify-center">সম্পাদনা</button>
+                          <button onClick={() => setDeleteConfirm({ id: item.id, type: 'circular' })} className="p-1 px-2.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-955/40 dark:text-rose-400 rounded text-rose-600 cursor-pointer text-[10px] min-h-[28px] flex items-center justify-center font-sans">মুছুন</button>
+                        </>
                       )}
                     </div>
                   </div>
                 ))}
 
                 {activeModel === 'gallery' && db.gallery.map((item) => (
-                  <div key={item.id} className="p-4 border border-zinc-150 dark:border-zinc-900 rounded-sm flex justify-between items-center text-xs gap-4 hover:bg-zinc-50/50">
-                    <div className="min-w-0 flex-1">
+                  <div key={item.id} className="p-4 border border-zinc-150 dark:border-zinc-900 rounded-sm flex flex-col md:flex-row md:items-center justify-between text-xs gap-4 hover:bg-zinc-50/50 dark:hover:bg-zinc-900/30 transition duration-150">
+                    <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[10px] uppercase font-mono text-zinc-650 bg-zinc-100 dark:bg-zinc-900 px-1.5 py-0.5 rounded font-bold">{item.type}</span>
                         <span className="text-[10px] text-rose-600 dark:text-rose-450 bg-rose-50 dark:bg-rose-955/20 px-2 py-0.5 rounded font-bold">ক্যাটাগরি পরিবর্তনঃ</span>
@@ -1592,14 +1639,18 @@ export default function AdminDashboard({
                       <h4 className="font-bold text-sm text-zinc-850 dark:text-zinc-200 mt-1 truncate">{item.title}</h4>
                       <p className="text-[10px] text-zinc-400 font-mono mt-0.5">{item.date}</p>
                     </div>
-                    <div className="flex gap-2 shrink-0 items-center">
+                    <div className="flex flex-wrap gap-2 shrink-0 items-center w-full md:w-auto justify-start md:justify-end border-t md:border-t-0 pt-3 md:pt-0 border-zinc-100 dark:border-zinc-900">
                       {deleteConfirm?.id === item.id && deleteConfirm?.type === 'gallery' ? (
-                        <div className="flex items-center gap-1 bg-rose-50 dark:bg-rose-955 px-1.5 py-0.5 border border-rose-200 dark:border-rose-900 rounded-xs">
-                          <button onClick={() => { onDeleteGallery(item.id); setDeleteConfirm(null); }} className="p-1 text-[10px] bg-rose-600 text-white rounded-xs font-bold cursor-pointer">হ্যাঁ</button>
-                          <button onClick={() => setDeleteConfirm(null)} className="p-1 text-[10px] bg-zinc-500 text-white rounded-xs font-bold cursor-pointer">না</button>
+                        <div className="flex items-center gap-1.5 bg-rose-50 dark:bg-rose-955/40 px-2 py-0.5 border border-rose-200 dark:border-rose-900 rounded-xs min-h-[28px]">
+                          <span className="text-[10px] text-rose-600 dark:text-rose-400 font-bold mr-1">নিশ্চিত?</span>
+                          <button onClick={() => { onDeleteGallery(item.id); setDeleteConfirm(null); }} className="p-1 px-2 text-[10px] bg-rose-600 text-white rounded-xs font-bold cursor-pointer font-sans">হ্যাঁ</button>
+                          <button onClick={() => setDeleteConfirm(null)} className="p-1 px-2 bg-zinc-500 text-white rounded-xs font-bold cursor-pointer font-sans">না</button>
                         </div>
                       ) : (
-                        <button onClick={() => setDeleteConfirm({ id: item.id, type: 'gallery' })} className="p-1 px-2 bg-rose-50 hover:bg-rose-100 rounded text-rose-600 cursor-pointer">মুছুন</button>
+                        <>
+                          <button onClick={() => handleOpenEditModal(item)} className="p-1 px-2.5 border border-zinc-250 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded text-zinc-500 dark:text-zinc-400 cursor-pointer text-[10px] min-h-[28px] flex items-center justify-center">সম্পাদনা</button>
+                          <button onClick={() => setDeleteConfirm({ id: item.id, type: 'gallery' })} className="p-1 px-2.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-955/40 dark:text-rose-400 rounded text-rose-600 cursor-pointer text-[10px] min-h-[28px] flex items-center justify-center font-sans">মুছুন</button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -3196,12 +3247,47 @@ export default function AdminDashboard({
                       <ul className="text-xs text-zinc-650 dark:text-zinc-400 space-y-1 font-mono mt-2.5">
                         <li><span className="font-sans font-semibold">মোবাইল:</span> {member.mobile}</li>
                         <li><span className="font-sans font-semibold">ইমেইল:</span> {member.email || 'নাই'}</li>
+                        <li>
+                          <span className="font-sans font-semibold">ইমেইল ভেরিফিকেশন:</span>{' '}
+                          {member.emailVerified ? (
+                            <span className="text-emerald-600 dark:text-emerald-400 font-bold">ভেরিফাইড (Verified)</span>
+                          ) : (
+                            <span className="text-rose-600 dark:text-rose-400 font-bold">অপ্রমাণিত (Not Verified)</span>
+                          )}
+                        </li>
+                        {member.verifiedMethod && (
+                          <li><span className="font-sans font-semibold">ভেরিফিকেশন পদ্ধতি:</span> {member.verifiedMethod}</li>
+                        )}
                         <li><span className="font-sans font-semibold">প্রতিষ্ঠানের নাম:</span> {member.institution} • {member.department} • সেশন: {member.academicYear}</li>
                         <li><span className="font-sans font-semibold">ঠিকানা:</span> {member.address}</li>
                         <li><span className="font-sans font-semibold">আবেদন তারিখ:</span> {member.appliedAt}</li>
                         {member.verifiedAt && (
                           <li className="text-emerald-600 dark:text-emerald-400 font-bold">
                             <span className="font-sans font-semibold">ভেরিফিকেশন তারিখ:</span> {member.verifiedAt}
+                          </li>
+                        )}
+                        {member.googleEmail && (
+                          <li className="bg-zinc-100 dark:bg-zinc-800/40 p-2.5 rounded-sm border border-zinc-200 dark:border-zinc-750/50 space-y-1 mt-2 font-sans">
+                            <div className="font-sans font-bold text-[10px] text-zinc-500 uppercase tracking-wider flex items-center gap-1">
+                              <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
+                                <path fill="#ea4335" d="M12.24 10.285V14.4h6.887c-.275 1.565-1.88 4.604-6.887 4.604-4.33 0-7.859-3.578-7.859-8s3.53-8 7.859-8c2.46 0 4.105 1.025 5.047 1.926l3.227-3.104C18.22 1.814 15.47 1 12.24 1 6.131 1 1.2 5.931 1.2 12s4.931 11 11.04 11c6.38 0 10.614-4.484 10.614-10.785 0-.727-.08-1.284-.176-1.93H12.24z"/>
+                              </svg>
+                              <span>গুগল প্রোফাইল বিবরণ (Google Auth Details)</span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1.5">
+                              {member.googlePhoto && (
+                                <img
+                                  src={member.googlePhoto}
+                                  alt="Google Photo"
+                                  className="w-8 h-8 rounded-full border border-zinc-300 dark:border-zinc-650 object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                              )}
+                              <div className="text-[10px] space-y-0.5 font-mono">
+                                <div><span className="font-sans font-medium text-zinc-400">Google Email:</span> <span className="text-zinc-700 dark:text-zinc-200">{member.googleEmail}</span></div>
+                                <div><span className="font-sans font-medium text-zinc-400">Google UID:</span> <span className="text-zinc-500">{member.googleUid}</span></div>
+                              </div>
+                            </div>
                           </li>
                         )}
                       </ul>
@@ -4246,7 +4332,7 @@ export default function AdminDashboard({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-zinc-705 dark:text-zinc-300 mb-1">
-                      ক্যাটাগরি বা প্রকার *
+                      {activeModel === 'event' ? 'কর্মসূচীর অবস্থা (Status) *' : 'ক্যাটাগরি বা প্রকার *'}
                     </label>
                     {activeModel === 'news' ? (
                       <select
@@ -4293,6 +4379,16 @@ export default function AdminDashboard({
                         <option value="book">বই ও পুস্তিকা</option>
                         <option value="magazine">ছাত্র বুলেটিন</option>
                         <option value="study-material">শিক্ষা মেটেরিয়াল</option>
+                      </select>
+                    ) : activeModel === 'event' ? (
+                      <select
+                        value={formCategory}
+                        onChange={(e) => setFormCategory(e.target.value)}
+                        className="w-full px-3 py-2 text-xs border border-zinc-300 dark:border-zinc-700 bg-transparent text-zinc-900 dark:text-white rounded focus:outline-none"
+                      >
+                        <option value="upcoming">আসন্ন কর্মসূচি (Upcoming)</option>
+                        <option value="past">সম্পন্ন কর্মসূচি (Past/Ended)</option>
+                        <option value="cancelled">বাতিল কর্মসূচি (Cancelled)</option>
                       </select>
                     ) : (
                       <input

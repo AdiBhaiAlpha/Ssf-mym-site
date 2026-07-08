@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Menu, X, Sun, Moon, LogIn, LogOut, ShieldAlert, Award, FileText, Newspaper, BookOpen, Calendar, HelpCircle, Mail, Search, Bell, Terminal } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { saveFirestoreDoc } from '../firebase';
+import { saveFirestoreDoc, secondaryAuth, secondaryGoogleProvider } from '../firebase';
+import { signInWithPopup } from 'firebase/auth';
+import { useToast } from './Toast';
 
 interface NavigationProps {
   currentTab: string;
@@ -40,6 +42,7 @@ export default function Navigation({
   showDebugConsole,
   setShowDebugConsole
 }: NavigationProps) {
+  const toast = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
@@ -66,6 +69,10 @@ export default function Navigation({
   const [regLoading, setRegLoading] = useState(false);
   const [isPendingDuplicate, setIsPendingDuplicate] = useState(false);
 
+  // Email Verification States
+  const [regVerificationPending, setRegVerificationPending] = useState(false);
+  const [regVerificationError, setRegVerificationError] = useState('');
+
   const handleCloseModal = () => {
     setShowLoginModal(false);
     setForgotPasswordMode(false);
@@ -81,6 +88,8 @@ export default function Navigation({
     setRegPassword('');
     setRegDob('');
     setRegBloodGroup('');
+    setRegVerificationPending(false);
+    setRegVerificationError('');
   };
 
   const userRole = invitations?.find(
@@ -153,6 +162,145 @@ export default function Navigation({
     { id: 'media', label: 'মিডিয়া সেন্টার', icon: FileText, visible: visibleSettings.showGallery },
     { id: 'contact', label: 'যোগাযোগ', icon: Mail, visible: true },
   ];
+
+  const handleGoogleSignInFlow = async () => {
+    try {
+      setLoginError('');
+      const result = await signInWithPopup(secondaryAuth, secondaryGoogleProvider);
+      const user = result.user;
+      if (!user || !user.email) {
+        throw new Error('গুগল অ্যাকাউন্ট থেকে ইমেল পাওয়া যায়নি।');
+      }
+
+      const emailVal = user.email.toLowerCase().trim();
+
+      // Check if is Super Admin
+      if (emailVal === 'chitronbhattacharjee@gmail.com') {
+        onLogin(emailVal);
+        setShowLoginModal(false);
+        toast.success('সুপার এডমিন হিসেবে গুগল লগইন সফল হয়েছে!');
+        logMemberLoginDirect(emailVal, 'success', 'সুপার এডমিন (চিত্রণ ভট্টাচার্য) গুগল দিয়ে সরাসরি পোর্টালে প্রবেশ করেছেন।');
+        return;
+      }
+
+      // Check if user exists in memberships list
+      const foundMember = memberships.find(m => m.email?.toLowerCase().trim() === emailVal);
+      if (!foundMember) {
+        toast.error('This Google account is not linked with any approved member account.');
+        setLoginError('This Google account is not linked with any approved member account. (এই গুগল অ্যাকাউন্টটি কোনো অনুমোদিত সদস্য অ্যাকাউন্টের সাথে যুক্ত নয়।)');
+        logMemberLoginDirect(emailVal, 'failed', 'অনিবন্ধিত গুগল একাউন্ট দিয়ে লগইনের চেষ্টা।');
+        return;
+      }
+
+      if (foundMember.status === 'pending') {
+        const msg = 'আপনার মেম্বারশিপ আবেদনটি বর্তমানে মূল্যায়নাধীন (Pending) রয়েছে। জেলা দপ্তর সেল অনুমোদন করার পর সরাসরি ড্যাশবোর্ড সক্রিয় হবে।';
+        toast.warning(msg);
+        setLoginError(msg);
+        logMemberLoginDirect(emailVal, 'failed', 'আবেদন পেন্ডিং থাকা অবস্থায় গুগল লগইন চেষ্টা।');
+        return;
+      }
+
+      if (foundMember.status === 'rejected') {
+        const msg = 'দুঃখিত, আপনার মেম্বারশিপ আবেদনটি জেলা সেল দ্বারা প্রত্যাখ্যাত হয়েছে।';
+        toast.error(msg);
+        setLoginError(msg);
+        logMemberLoginDirect(emailVal, 'failed', 'প্রত্যাখ্যাত আবেদন থাকা অবস্থায় গুগল লগইন চেষ্টা।');
+        return;
+      }
+
+      if (foundMember.status === 'verified') {
+        // Successful Google login
+        // Save Google login metadata back to Firestore for the user record
+        const updatedDoc = {
+          ...foundMember,
+          googleUid: user.uid,
+          googleEmail: user.email,
+          googlePhoto: user.photoURL || '',
+          lastGoogleLogin: new Date().toISOString().replace('T', ' ').substring(0, 19)
+        };
+        await saveFirestoreDoc('memberships', foundMember.id, updatedDoc);
+
+        onLogin(foundMember.email);
+        setCurrentTab('member-portal');
+        setShowLoginModal(false);
+        toast.success(`স্বাগতম কমরেড ${foundMember.name}! গুগল সাইন-ইন সফল হয়েছে।`);
+        logMemberLoginDirect(foundMember.email, 'success', `সদস্য "${foundMember.name}" গুগল সাইন-ইন দিয়ে সফলভাবে লগইন করেছেন।`);
+      }
+    } catch (error: any) {
+      console.error('Google Auth Error:', error);
+      if (error.code !== 'auth/popup-closed-by-user') {
+        toast.error(error.message || 'গুগল সাইন-ইন করার সময় কোনো ত্রুটি ঘটেছে।');
+        setLoginError(error.message || 'গুগল সাইন-ইন করার সময় কোনো ত্রুটি ঘটেছে।');
+      }
+    }
+  };
+
+  const handleGoogleRegVerificationFlow = async () => {
+    try {
+      setRegLoading(true);
+      setRegVerificationError('');
+      
+      const result = await signInWithPopup(secondaryAuth, secondaryGoogleProvider);
+      const user = result.user;
+      if (!user || !user.email) {
+        throw new Error('গুগল অ্যাকাউন্ট থেকে ইমেইল এড্রেস পাওয়া যায়নি।');
+      }
+
+      const googleEmailLower = user.email.toLowerCase().trim();
+      const enteredEmailLower = regEmail.toLowerCase().trim();
+
+      if (googleEmailLower !== enteredEmailLower) {
+        setRegVerificationError(`The selected Google account does not match the email address entered during registration. (নির্বাচনকৃত গুগল অ্যাকাউন্ট "${user.email}" আপনার ফর্মে দেওয়া ইমেইল "${regEmail}" এর সাথে হুবহু মেলেনি।)`);
+        setRegLoading(false);
+        return;
+      }
+
+      // If it matches, complete registration!
+      if (onRegisterMember) {
+        const added = await onRegisterMember({
+          name: regName.trim(),
+          mobile: regMobile.trim(),
+          email: regEmail.trim().toLowerCase(),
+          password: regPassword.trim(),
+          institution: regInstitution.trim(),
+          department: '',
+          academicYear: '',
+          address: 'অনলাইন সাইনআপ ফর্ম',
+          dob: regDob,
+          bloodGroup: regBloodGroup,
+          type: regType,
+          // New security verification fields
+          emailVerified: true,
+          verifiedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+          verifiedMethod: 'Google OAuth',
+          googleUid: user.uid,
+          googleEmail: user.email,
+          googlePhoto: user.photoURL || ''
+        });
+
+        if (added) {
+          setRegSuccess(`বিপ্লবী শুভেচ্ছা কমরেড ${regName.trim()}! নতুন অ্যাকাউন্ট ও সদস্যপদের আবেদনটি সফলভাবে নিবন্ধিত হয়েছে। জেলা দপ্তর সেল আবেদনটি ভেরিফাই ও অনুমোদন করার পর আপনি সরাসরি এই ইমেইল দিয়ে ডাটাবেজ পোর্টালে লগইন করতে পারবেন।`);
+          setRegName('');
+          setRegEmail('');
+          setRegMobile('');
+          setRegInstitution('');
+          setRegDob('');
+          setRegBloodGroup('');
+          setRegVerificationPending(false);
+          setRegVerificationError('');
+        } else {
+          setRegVerificationError('দুঃখিত, আবেদনপত্রটি ডাটাবেজে সাবমিট করা যায়নি। দয়া করে পুনরায় চেষ্টা করুন।');
+        }
+      }
+    } catch (err: any) {
+      console.error(err);
+      if (err.code !== 'auth/popup-closed-by-user') {
+        setRegVerificationError(err.message || 'গুগল ভেরিফিকেশন করার সময় কোনো ত্রুটি ঘটেছে।');
+      }
+    } finally {
+      setRegLoading(false);
+    }
+  };
 
   const logMemberLoginDirect = async (email: string, status: string, details: string) => {
     const payload = {
@@ -337,42 +485,9 @@ export default function Navigation({
       return;
     }
 
-    try {
-      if (onRegisterMember) {
-        const added = await onRegisterMember({
-          name: nameVal,
-          mobile: mobileVal,
-          email: emailVal,
-          password: passVal,
-          institution: instVal,
-          department: '',
-          academicYear: '',
-          address: 'অনলাইন সাইনআপ ফর্ম',
-          dob: regDob,
-          bloodGroup: regBloodGroup,
-          type: regType
-        });
-
-        if (added) {
-          setRegSuccess(`বিপ্লবী শুভেচ্ছা কমরেড ${nameVal}! নতুন অ্যাকাউন্ট ও সদস্যপদের আবেদনটি সফলভাবে নিবন্ধিত হয়েছে। জেলা দপ্তর সেল আবেদনটি ভেরিফাই ও অনুমোদন করার পর আপনি সরাসরি এই ইমেইল দিয়ে ডাটাবেজ পোর্টালে লগইন করতে পারবেন।`);
-          setRegName('');
-          setRegEmail('');
-          setRegMobile('');
-          setRegInstitution('');
-          setRegDob('');
-          setRegBloodGroup('');
-        } else {
-          setLoginError('দুঃখিত, আবেদনপত্রটি ডাটাবেজে সাবমিট করা যায়নি। দয়া করে পুনরায় চেষ্টা করুন।');
-        }
-      } else {
-        setLoginError('দুঃখিত, এই মুহূর্তে অনলাইন সদস্যপদ নিবন্ধন কার্যক্রম ও পোর্টাল সাইনআপ সাময়িকভাবে বন্ধ আছে।');
-      }
-    } catch (err) {
-      console.error(err);
-      setLoginError('আবেদন প্রক্রিয়াকরণে ভুল ত্রুটি দেখা দিয়েছে।');
-    } finally {
-      setRegLoading(false);
-    }
+    setRegLoading(false);
+    setRegVerificationPending(true);
+    setRegVerificationError('');
   };
 
 
@@ -528,6 +643,21 @@ export default function Navigation({
                 <Terminal className="w-5 h-5" />
               </button>
 
+              {!userEmail && (
+                <button
+                  onClick={handleGoogleSignInFlow}
+                  className="p-1.5 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-all duration-200 flex items-center justify-center border border-zinc-200 dark:border-zinc-800 shrink-0 cursor-pointer"
+                  title="গুগল দিয়ে লগইন"
+                >
+                  <svg className="w-4.5 h-4.5" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                  </svg>
+                </button>
+              )}
+
               <button
                 onClick={() => setDarkMode(!darkMode)}
                 className="p-2 text-zinc-500 hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-500 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-all"
@@ -635,6 +765,21 @@ export default function Navigation({
                 >
                   <Terminal className="w-5 h-5" />
                 </button>
+
+                {!userEmail && (
+                  <button
+                    onClick={handleGoogleSignInFlow}
+                    className="p-2 text-zinc-500 hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-500 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-all duration-200 flex items-center justify-center border border-zinc-250 dark:border-zinc-800 cursor-pointer shadow-xs shrink-0"
+                    title="গুগল দিয়ে লগইন"
+                  >
+                    <svg className="w-5 h-5" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                    </svg>
+                  </button>
+                )}
 
                 <button
                   onClick={() => setDarkMode(!darkMode)}
@@ -905,7 +1050,7 @@ export default function Navigation({
                 </div>
 
                 {/* Login controls mobile drawer */}
-                <div className="pt-3 px-1">
+                <div className="pt-3 px-1 space-y-2">
                   {userEmail ? (
                     <div className="flex items-center justify-between bg-zinc-50 dark:bg-zinc-900/40 p-3 rounded-md border border-zinc-150 dark:border-zinc-800">
                       <div className="truncate max-w-[150px]">
@@ -926,16 +1071,35 @@ export default function Navigation({
                       </button>
                     </div>
                   ) : (
-                    <button
-                      onClick={() => {
-                        setIsOpen(false);
-                        setShowLoginModal(true);
-                      }}
-                      className="flex items-center justify-center space-x-2 w-full py-2 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-950 text-xs font-bold rounded-md shadow-sm transition-all"
-                    >
-                      <LogIn className="w-4 h-4" />
-                      <span>লগইন করুন</span>
-                    </button>
+                    <>
+                      <button
+                        onClick={() => {
+                          setIsOpen(false);
+                          setShowLoginModal(true);
+                        }}
+                        className="flex items-center justify-center space-x-2 w-full py-2 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-950 text-xs font-bold rounded-md shadow-sm transition-all cursor-pointer"
+                      >
+                        <LogIn className="w-4 h-4" />
+                        <span>লগইন করুন</span>
+                      </button>
+
+                      {/* Google Authentication Button in 3-Dot Drawer */}
+                      <button
+                        onClick={() => {
+                          setIsOpen(false);
+                          handleGoogleSignInFlow();
+                        }}
+                        className="flex items-center justify-center space-x-2 w-full py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-850 text-zinc-700 dark:text-zinc-250 font-extrabold text-xs rounded-md shadow-xs transition-all cursor-pointer"
+                      >
+                        <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                        </svg>
+                        <span>Continue with Google</span>
+                      </button>
+                    </>
                   )}
                 </div>
 
@@ -1170,135 +1334,184 @@ export default function Navigation({
                       </div>
                     </form>
                   ) : signupMode ? (
-                    <form onSubmit={handleSignupSubmit} className="space-y-3.5 transition-all">
-                      <div>
-                        <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                          পূর্ণ নাম (Full Name) *
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          placeholder="যেমনঃ ইমরান হোসেন"
-                          value={regName}
-                          onChange={(e) => setRegName(e.target.value)}
-                          className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-800 bg-transparent text-zinc-900 dark:text-white rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500 font-sans"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                            মোবাইল নম্বর *
-                          </label>
-                          <input
-                            type="tel"
-                            required
-                            placeholder="যেমনঃ ০১৭১১xxxxxx"
-                            value={regMobile}
-                            onChange={(e) => setRegMobile(e.target.value)}
-                            className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-800 bg-transparent text-zinc-900 dark:text-white rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500 font-mono"
-                          />
+                    regVerificationPending ? (
+                      <div className="text-center py-4 space-y-4 font-sans">
+                        <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 flex items-center justify-center mx-auto border border-rose-200">
+                          <ShieldAlert className="w-6 h-6 animate-pulse text-rose-600" />
                         </div>
                         <div>
-                          <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                            ইমেইল এড্রেস *
-                          </label>
-                          <input
-                            type="email"
-                            required
-                            placeholder="name@example.com"
-                            value={regEmail}
-                            onChange={(e) => setRegEmail(e.target.value)}
-                            className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-800 bg-transparent text-zinc-900 dark:text-white rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500 font-mono"
-                          />
+                          <h3 className="text-sm font-extrabold text-zinc-900 dark:text-white leading-snug">ইমেইল ঠিকানা যাচাইকরণ (Verify Email Address)</h3>
+                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 max-w-sm mx-auto leading-relaxed mt-1">
+                            আপনার মেম্বারশিপ আবেদনটি সম্পূর্ণ করার জন্য গুগল অ্যাকাউন্ট দিয়ে ইমেইলটির মালিকানা যাচাই করুন। আপনি ফর্মে ইমেইল দিয়েছেন: <strong className="font-mono text-rose-600 dark:text-rose-400 break-all">{regEmail}</strong>
+                          </p>
+                        </div>
+                        <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 rounded text-amber-800 dark:text-amber-400 text-left max-w-md mx-auto text-[10px] leading-relaxed">
+                          ⚠️ <strong>সতর্কতা:</strong> আপনার নির্বাচনকৃত Google অ্যাকাউন্টের ইমেইল এবং ফর্মে দেওয়া ইমেইলটি অবশ্যই হুবহু এক হতে হবে।
+                        </div>
+                        {regVerificationError && (
+                          <div className="p-3 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 rounded text-rose-700 dark:text-rose-400 text-xs text-left max-w-md mx-auto font-sans leading-relaxed">
+                            {regVerificationError}
+                          </div>
+                        )}
+                        <div className="pt-3 flex flex-col sm:flex-row items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRegVerificationPending(false);
+                              setRegVerificationError('');
+                            }}
+                            className="w-full sm:w-auto px-4 py-1.5 border border-zinc-250 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 font-bold rounded text-xs cursor-pointer"
+                          >
+                            আবেদনে ফিরে যান
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleGoogleRegVerificationFlow}
+                            disabled={regLoading}
+                            className="w-full sm:w-auto px-4 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-250 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-850 text-zinc-700 dark:text-zinc-250 font-bold text-xs rounded transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+                          >
+                            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                            </svg>
+                            <span>Verify with Google</span>
+                          </button>
                         </div>
                       </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                          শিক্ষা প্রতিষ্ঠান (Institution) *
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          placeholder="যেমনঃ আনন্দ মোহন কলেজ, ময়মনসিংহ"
-                          value={regInstitution}
-                          onChange={(e) => setRegInstitution(e.target.value)}
-                          className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-800 bg-transparent text-zinc-900 dark:text-white rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    ) : (
+                      <form onSubmit={handleSignupSubmit} className="space-y-3.5 transition-all">
                         <div>
                           <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                            জন্ম তারিখ (Date of Birth) *
+                            পূর্ণ নাম (Full Name) *
                           </label>
                           <input
-                            type="date"
+                            type="text"
                             required
-                            value={regDob}
-                            onChange={(e) => setRegDob(e.target.value)}
-                            className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-805 bg-transparent text-zinc-900 dark:text-white rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500 font-sans"
+                            placeholder="যেমনঃ ইমরান হোসেন"
+                            value={regName}
+                            onChange={(e) => setRegName(e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-800 bg-transparent text-zinc-900 dark:text-white rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500 font-sans"
                           />
                         </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                              মোবাইল নম্বর *
+                            </label>
+                            <input
+                              type="tel"
+                              required
+                              placeholder="যেমনঃ ০১৭১১xxxxxx"
+                              value={regMobile}
+                              onChange={(e) => setRegMobile(e.target.value)}
+                              className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-800 bg-transparent text-zinc-900 dark:text-white rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500 font-mono"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                              ইমেইল এড্রেস *
+                            </label>
+                            <input
+                              type="email"
+                              required
+                              placeholder="name@example.com"
+                              value={regEmail}
+                              onChange={(e) => setRegEmail(e.target.value)}
+                              className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-800 bg-transparent text-zinc-900 dark:text-white rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500 font-mono"
+                            />
+                          </div>
+                        </div>
+
                         <div>
                           <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                            রক্তের গ্রুপ (Blood Group) (ঐচ্ছিক)
+                            শিক্ষা প্রতিষ্ঠান (Institution) *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="যেমনঃ আনন্দ মোহন কলেজ, ময়মনসিংহ"
+                            value={regInstitution}
+                            onChange={(e) => setRegInstitution(e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-800 bg-transparent text-zinc-900 dark:text-white rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                              জন্ম তারিখ (Date of Birth) *
+                            </label>
+                            <input
+                              type="date"
+                              required
+                              value={regDob}
+                              onChange={(e) => setRegDob(e.target.value)}
+                              className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-805 bg-transparent text-zinc-900 dark:text-white rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500 font-sans"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                              রক্তের গ্রুপ (Blood Group) (ঐচ্ছিক)
+                            </label>
+                            <select
+                              value={regBloodGroup}
+                              onChange={(e) => setRegBloodGroup(e.target.value)}
+                              className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500 font-sans"
+                            >
+                              <option value="">নির্বাচন করুন (ঐচ্ছিক)</option>
+                              <option value="A+">A+ (এ পজিটিভ)</option>
+                              <option value="A-">A- (এ নেগেティブ)</option>
+                              <option value="B+">B+ (বি পজিটিভ)</option>
+                              <option value="B-">B- (বি নেগেティブ)</option>
+                              <option value="AB+">AB+ (এবি পজিটিভ)</option>
+                              <option value="AB-">AB- (এবি নেগেティブ)</option>
+                              <option value="O+">O+ (ও পজিটিভ)</option>
+                              <option value="O-">O- (ও নেগেティブ)</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                            ভূমিকা / ক্যাটাগরি ধরন নির্বাচন করুন
                           </label>
                           <select
-                            value={regBloodGroup}
-                            onChange={(e) => setRegBloodGroup(e.target.value)}
-                            className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500 font-sans"
+                            value={regType}
+                            onChange={(e) => setRegType(e.target.value as 'member' | 'volunteer')}
+                            className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500"
                           >
-                            <option value="">নির্বাচন করুন (ঐচ্ছিক)</option>
-                            <option value="A+">A+ (এ পজিটিভ)</option>
-                            <option value="A-">A- (এ নেগেটিভ)</option>
-                            <option value="B+">B+ (বি পজিটিভ)</option>
-                            <option value="B-">B- (বি নেগেটিভ)</option>
-                            <option value="AB+">AB+ (এবি পজিটিভ)</option>
-                            <option value="AB-">AB- (এবি নেগেটিভ)</option>
-                            <option value="O+">O+ (ও পজিটিভ)</option>
-                            <option value="O-">O- (ও নেগেটিভ)</option>
+                            <option value="member">শাখা সাধারণ সদস্য (General Member)</option>
+                            <option value="volunteer">ছাত্র-স্বেচ্ছাসেবী সেল (Volunteer Wing)</option>
                           </select>
                         </div>
-                      </div>
 
-                      <div>
-                        <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                          ভূমিকা / ক্যাটাগরি ধরন নির্বাচন করুন
-                        </label>
-                        <select
-                          value={regType}
-                          onChange={(e) => setRegType(e.target.value as 'member' | 'volunteer')}
-                          className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500"
+                        <div>
+                          <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                            পাসওয়ার্ড সেট করুন (Create Password) *
+                          </label>
+                          <input
+                            type="password"
+                            required
+                            placeholder="কমপক্ষে ৪ অক্ষরের পাসওয়ার্ড দিন"
+                            value={regPassword}
+                            onChange={(e) => setRegPassword(e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-800 bg-transparent text-zinc-900 dark:text-white rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500"
+                          />
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={regLoading}
+                          className="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm rounded-md transition shadow-md disabled:opacity-50"
                         >
-                          <option value="member">শাখা সাধারণ সদস্য (General Member)</option>
-                          <option value="volunteer">ছাত্র-স্বেচ্ছাসেবী সেল (Volunteer Wing)</option>
-                        </select>
-                      </div>
+                          {regLoading ? 'আবেদন সিস্টেমে জমা হচ্ছে...' : 'বিপ্লবী আবেদনপত্র পেশ করুন'}
+                        </button>
+                      </form>
+                    )
 
-                      <div>
-                        <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                          পাসওয়ার্ড সেট করুন (Create Password) *
-                        </label>
-                        <input
-                          type="password"
-                          required
-                          placeholder="কমপক্ষে ৪ অক্ষরের পাসওয়ার্ড দিন"
-                          value={regPassword}
-                          onChange={(e) => setRegPassword(e.target.value)}
-                          className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-800 bg-transparent text-zinc-900 dark:text-white rounded-md focus:outline-none focus:ring-1 focus:ring-rose-500"
-                        />
-                      </div>
-
-                      <button
-                        type="submit"
-                        disabled={regLoading}
-                        className="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm rounded-md transition shadow-md disabled:opacity-50"
-                      >
-                        {regLoading ? 'আবেদন সিস্টেমে জমা হচ্ছে...' : 'বিপ্লবী আবেদনপত্র পেশ করুন'}
-                      </button>
-                    </form>
                   ) : (
                     /* Normal Login Form */
                     <form onSubmit={handleLoginSubmit} className="space-y-4">

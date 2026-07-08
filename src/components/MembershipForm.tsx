@@ -3,6 +3,8 @@ import { UserPlus, ShieldAlert, CheckCircle2, Search, UserCheck, RefreshCw, X, A
 import { MemberRegistration } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from './Toast';
+import { signInWithPopup } from 'firebase/auth';
+import { secondaryAuth, secondaryGoogleProvider } from '../firebase';
 
 interface MembershipFormProps {
   onRegisterMember: (registration: Omit<MemberRegistration, 'id' | 'status' | 'appliedAt'>) => Promise<MemberRegistration | null>;
@@ -31,11 +33,115 @@ export default function MembershipForm({ onRegisterMember, membersList, setCurre
 
   const [appliedSuccess, setAppliedSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [googleAutofilled, setGoogleAutofilled] = useState(false);
+
+  // Email Verification States
+  const [verificationPending, setVerificationPending] = useState(false);
+  const [verificationError, setVerificationError] = useState('');
 
   // Search/Verification features
   const [searchMobile, setSearchMobile] = useState('');
   const [verifiedMember, setVerifiedMember] = useState<MemberRegistration | null>(null);
   const [searchHasRun, setSearchHasRun] = useState(false);
+
+  const handleGoogleAutofill = async () => {
+    try {
+      setSubmitting(true);
+      const result = await signInWithPopup(secondaryAuth, secondaryGoogleProvider);
+      const user = result.user;
+      if (user) {
+        if (user.displayName) {
+          setName(user.displayName);
+        }
+        if (user.email) {
+          setEmail(user.email);
+        }
+        // Generate automatic temporary secure password if none exists
+        if (!password) {
+          setPassword(Math.random().toString(36).substring(2, 10));
+        }
+        setGoogleAutofilled(true);
+        toast.success('গুগল অ্যাকাউন্ট থেকে আপনার নাম ও ইমেইল সফলভাবে অটো-ফিল করা হয়েছে! অনুগ্রহ করে বাকি প্রয়োজনীয় তথ্যসমূহ দিন।');
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'গুগল অটো-ফিল করার সময় কোনো ত্রুটি ঘটেছে।');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleGoogleVerificationFlow = async () => {
+    try {
+      setSubmitting(true);
+      setVerificationError('');
+      
+      const result = await signInWithPopup(secondaryAuth, secondaryGoogleProvider);
+      const user = result.user;
+      if (!user || !user.email) {
+        throw new Error('গুগল অ্যাকাউন্ট থেকে ইমেইল এড্রেস পাওয়া যায়নি।');
+      }
+
+      const googleEmailLower = user.email.toLowerCase().trim();
+      const enteredEmailLower = email.toLowerCase().trim();
+
+      if (googleEmailLower !== enteredEmailLower) {
+        setVerificationError(`The selected Google account does not match the email address entered during registration. (নির্বাচনকৃত গুগল অ্যাকাউন্ট "${user.email}" আপনার ফর্মে দেওয়া ইমেইল "${email}" এর সাথে হুবহু মেলেনি।)`);
+        setSubmitting(false);
+        return;
+      }
+
+      // If it matches, complete registration!
+      const added = await onRegisterMember({
+        name: name.trim(),
+        mobile: mobile.trim(),
+        email: email.trim(),
+        password: password.trim(),
+        institution: institution.trim(),
+        department: department.trim(),
+        academicYear: academicYear.trim(),
+        address: address.trim(),
+        dob,
+        bloodGroup: bloodGroup.trim(),
+        type,
+        // New security verification fields
+        emailVerified: true,
+        verifiedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        verifiedMethod: 'Google OAuth',
+        googleUid: user.uid,
+        googleEmail: user.email,
+        googlePhoto: user.photoURL || ''
+      });
+
+      setSubmitting(false);
+
+      if (added) {
+        setAppliedSuccess(true);
+        // Clean states
+        setName('');
+        setMobile('');
+        setEmail('');
+        setPassword('');
+        setInstitution('');
+        setDepartment('');
+        setAcademicYear('');
+        setAddress('');
+        setDob('');
+        setBloodGroup('');
+        setGoogleAutofilled(false);
+        setVerificationPending(false);
+        setVerificationError('');
+      } else {
+        setVerificationError('দুঃখিত, আবেদনপত্রটি ডাটাবেজে সাবমিট করা যায়নি। দয়া করে পুনরায় চেষ্টা করুন।');
+      }
+    } catch (err: any) {
+      console.error(err);
+      if (err.code !== 'auth/popup-closed-by-user') {
+        setVerificationError(err.message || 'গুগল ভেরিফিকেশন করার সময় কোনো ত্রুটি ঘটেছে।');
+      }
+      setSubmitting(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,36 +172,8 @@ export default function MembershipForm({ onRegisterMember, membersList, setCurre
     }
 
     setDuplicateEmailError(false);
-    setSubmitting(true);
-    const added = await onRegisterMember({
-      name: nameVal,
-      mobile: mobileVal,
-      email: emailVal,
-      password: passVal,
-      institution: instVal,
-      department: department.trim(),
-      academicYear: academicYear.trim(),
-      address: address.trim(),
-      dob,
-      bloodGroup: bloodGroup.trim(),
-      type
-    });
-    setSubmitting(false);
-
-    if (added) {
-      setAppliedSuccess(true);
-      // Clean states
-      setName('');
-      setMobile('');
-      setEmail('');
-      setPassword('');
-      setInstitution('');
-      setDepartment('');
-      setAcademicYear('');
-      setAddress('');
-      setDob('');
-      setBloodGroup('');
-    }
+    setVerificationPending(true);
+    setVerificationError('');
   };
 
   const handleVerifySearch = (e: React.FormEvent) => {
@@ -154,7 +232,10 @@ export default function MembershipForm({ onRegisterMember, membersList, setCurre
           <div className="mt-8 space-y-5">
             <div className="flex flex-wrap gap-4 items-center">
               <button
-                onClick={() => setIsFormModalOpen(true)}
+                onClick={() => {
+                  setGoogleAutofilled(false);
+                  setIsFormModalOpen(true);
+                }}
                 className="px-6 py-3.5 bg-rose-600 hover:bg-rose-700 text-white rounded font-bold text-xs shadow-lg shadow-rose-600/30 transition-all flex items-center gap-2 cursor-pointer border border-rose-500 hover:scale-[1.02] select-none"
               >
                 <UserCheck className="w-4 h-4" />
@@ -404,8 +485,76 @@ export default function MembershipForm({ onRegisterMember, membersList, setCurre
                       </button>
                     </div>
                   </div>
+                ) : verificationPending ? (
+                  <div className="text-center py-6 space-y-5 font-sans">
+                    <div className="w-14 h-14 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 flex items-center justify-center mx-auto border border-rose-200">
+                      <ShieldAlert className="w-7 h-7 animate-pulse text-rose-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-extrabold text-zinc-900 dark:text-white leading-snug">ইমেইল ঠিকানা যাচাইকরণ (Verify Email Address)</h3>
+                      <p className="text-xs text-zinc-550 dark:text-zinc-400 max-w-sm mx-auto leading-relaxed mt-2">
+                        আপনার মেম্বারশিপ আবেদনটি সম্পূর্ণ করার জন্য গুগল অ্যাকাউন্ট দিয়ে ইমেইলটির মালিকানা যাচাই করুন। আপনি ফর্মে ইমেইল দিয়েছেন: <strong className="font-mono text-rose-600 dark:text-rose-400 break-all">{email}</strong>
+                      </p>
+                    </div>
+                    <div className="p-3.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-250 dark:border-amber-900 rounded text-amber-800 dark:text-amber-400 text-left max-w-md mx-auto text-[11px] leading-relaxed">
+                      ⚠️ <strong>সতর্কতা:</strong> আপনার নির্বাচনকৃত Google অ্যাকাউন্টের ইমেইল এবং ফর্মে দেওয়া ইমেইলটি অবশ্যই হুবহু এক হতে হবে। অন্যথায় ভেরিফিকেশন সফল হবে না।
+                    </div>
+                    {verificationError && (
+                      <div className="p-3 bg-rose-50 dark:bg-rose-950/30 border border-rose-250 dark:border-rose-900 rounded text-rose-700 dark:text-rose-400 text-xs text-left max-w-md mx-auto font-sans leading-relaxed">
+                        {verificationError}
+                      </div>
+                    )}
+                    <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVerificationPending(false);
+                          setVerificationError('');
+                        }}
+                        className="w-full sm:w-auto px-5 py-2 border border-zinc-250 dark:border-zinc-800 text-zinc-700 dark:text-zinc-350 font-bold rounded cursor-pointer text-xs"
+                      >
+                        আবেদনে ফিরে যান
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleGoogleVerificationFlow}
+                        disabled={submitting}
+                        className="w-full sm:w-auto px-5 py-2 bg-white dark:bg-zinc-900 border border-zinc-250 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-850 text-zinc-700 dark:text-zinc-250 font-bold text-xs rounded transition flex items-center justify-center gap-2 cursor-pointer shadow-xs disabled:opacity-50"
+                      >
+                        <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                        </svg>
+                        <span>Verify with Google</span>
+                      </button>
+                    </div>
+                  </div>
                 ) : (
                   <form onSubmit={handleSubmit} className="space-y-4 font-sans text-xs">
+                    
+                    {/* Google Auto-fill Option Banner */}
+                    <div className="bg-rose-500/5 dark:bg-rose-500/10 p-3 rounded border border-rose-500/15 flex flex-col sm:flex-row items-center justify-between gap-3 font-sans">
+                      <div className="text-left">
+                        <p className="text-xs font-bold text-zinc-800 dark:text-zinc-150">Google অ্যাকাউন্ট দিয়ে দ্রুত ফর্ম পূরণ করুন</p>
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400">আপনার Google অ্যাকাউন্ট থেকে নাম ও ইমেইল সয়ংক্রিয়ভাবে লোড করুন।</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleGoogleAutofill}
+                        disabled={submitting}
+                        className="px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-250 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-850 text-zinc-750 dark:text-zinc-200 font-bold text-[11px] rounded transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs shrink-0 disabled:opacity-50"
+                      >
+                        <svg className="w-4.5 h-4.5 shrink-0" viewBox="0 0 24 24">
+                          <path fill="#EA4335" d="M12 5.04c1.64 0 3.12.56 4.28 1.67l3.2-3.2C17.52 1.58 14.94 1 12 1 7.24 1 3.2 3.86 1.34 8l3.77 2.92C6.01 7.24 8.79 5.04 12 5.04z" />
+                          <path fill="#4285F4" d="M23.45 12.3c0-.82-.07-1.6-.2-2.3H12v4.4h6.43c-.28 1.47-1.11 2.72-2.36 3.56l3.66 2.84c2.14-1.97 3.37-4.88 3.37-8.5z" />
+                          <path fill="#FBBC05" d="M5.11 14.08c-.24-.72-.37-1.5-.37-2.3s.13-1.58.37-2.3L1.34 6.56C.48 8.28 0 10.1 0 12s.48 3.72 1.34 5.44l3.77-2.92c-.24-.44-.24-.88-.24-1.44z" />
+                          <path fill="#34A853" d="M12 23c3.24 0 5.97-1.08 7.96-2.92l-3.66-2.84c-1.1.74-2.52 1.18-4.3 1.18-3.21 0-5.99-2.2-6.96-5.46l-3.77 2.92C3.2 20.14 7.24 23 12 23z" />
+                        </svg>
+                        <span>Google অটো-ফিল</span>
+                      </button>
+                    </div>
                     
                     {duplicateEmailError && (
                       <div className="p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200/85 rounded mb-4 text-xs text-amber-800 dark:text-amber-400 space-y-2 font-sans font-medium text-left">
@@ -473,7 +622,12 @@ export default function MembershipForm({ onRegisterMember, membersList, setCurre
                       </div>
 
                       <div>
-                        <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-300 mb-1 font-mono uppercase tracking-wider">ইমেইল এড্রেস *</label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-[10px] font-bold text-zinc-650 dark:text-zinc-300 font-mono uppercase tracking-wider">ইমেইল এড্রেস *</label>
+                          {googleAutofilled && (
+                            <span className="text-[8px] bg-emerald-550/10 text-emerald-600 dark:text-emerald-400 font-bold px-1.5 py-0.5 rounded font-mono uppercase">Google Verified</span>
+                          )}
+                        </div>
                         <input
                           type="email"
                           required

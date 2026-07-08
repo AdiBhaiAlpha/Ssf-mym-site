@@ -935,6 +935,32 @@ export default function App() {
     return false;
   };
 
+  const handleEditEvent = async (id: string, event: any) => {
+    if (!userEmail) return false;
+    try {
+      const matched = db?.events?.find(e => e.id === id);
+      const updated = { ...matched, ...event, id };
+      await saveFirestoreDoc('events', id, updated);
+
+      // Log
+      const logId = 'log_' + Date.now();
+      const logData = {
+        id: logId,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        action: 'ইভেন্ট সম্পাদিত',
+        user: userEmail,
+        details: `"${updated.title}" ইভেন্টটি আপডেট বা এডিট করা হয়েছে।`
+      };
+      await saveFirestoreDoc('logs', logId, logData);
+
+      await fetchDatabase();
+      return true;
+    } catch (e) {
+      console.error(e);
+    }
+    return false;
+  };
+
   const handleAddBook = async (book: any) => {
     if (!userEmail) return false;
     try {
@@ -1435,6 +1461,7 @@ export default function App() {
             onDeleteBlog={handleDeleteBlog}
             onApproveComment={handleApproveComment}
             onAddEvent={handleAddEvent}
+            onEditEvent={handleEditEvent}
             onDeleteEvent={handleDeleteEvent}
             onAddBook={handleAddBook}
             onEditBook={handleEditBook}
