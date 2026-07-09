@@ -3,7 +3,6 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import multer from 'multer';
-import { createServer as createViteServer } from 'vite';
 import { getInitialDBState, AppDatabase } from './src/server/db-initial';
 import { renderPhotoCardServerSide } from './src/server/card-renderer';
 
@@ -182,6 +181,12 @@ function isSuperAdmin(email: string | undefined): boolean {
     console.error('Failed to read dynamic credentials', e);
   }
   return false;
+}
+
+// Helper to dynamically import ESM modules in a CommonJS-compatible way
+async function esmImport(moduleName: string) {
+  const dynamicImport = new Function('specifier', 'return import(specifier)');
+  return dynamicImport(moduleName);
 }
 
 async function startServer() {
@@ -2027,7 +2032,8 @@ Sitemap: ${proto}://${host}/sitemap.xml`);
     });
   } else {
     // Vite middleware for development
-    const vite = await createViteServer({
+    const viteModule = await esmImport('vite');
+    const vite = await viteModule.createServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
