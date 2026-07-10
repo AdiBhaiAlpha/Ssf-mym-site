@@ -22,7 +22,7 @@ import { fetchFirestoreDatabase, saveFirestoreDoc, deleteFirestoreDoc, resetFire
 import { getRedirectResult, signInWithCredential, GoogleAuthProvider, signInWithRedirect } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { Capacitor } from '@capacitor/core';
-import { GoogleAuth } from '@capacitor/google-auth';
+import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 import { authDiagnostics, validateFirebaseUser, decomposeAuthError, logMemberLoginDirect } from './lib/authService';
 import { motion, AnimatePresence } from 'motion/react';
 import { updateSEOMetadata } from './lib/seo';
