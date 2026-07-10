@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Mail, Key, ShieldCheck, ShieldAlert, Sparkles, RefreshCw, Undo2, Lock } from 'lucide-react';
 import { MemberRegistration } from '../types';
 import { saveFirestoreDoc, secondaryAuth, secondaryGoogleProvider } from '../firebase';
-import { signInWithPopup } from 'firebase/auth';
+import { initiateGoogleSignIn } from '../lib/authService';
 
 interface PortalAuthProps {
   memberships: MemberRegistration[];
@@ -25,51 +25,7 @@ export default function PortalAuth({ memberships, onLogin }: PortalAuthProps) {
     setLoading(true);
 
     try {
-      const result = await signInWithPopup(secondaryAuth, secondaryGoogleProvider);
-      const user = result.user;
-      if (!user || !user.email) {
-        throw new Error('Google অ্যাকাউন্ট থেকে কোনো ইমেইল পাওয়া যায়নি।');
-      }
-
-      const cleanEmail = user.email.trim().toLowerCase();
-
-      // Check admin login
-      if (cleanEmail === 'chitronbhattacharjee@gmail.com') {
-        onLogin(cleanEmail);
-        setLoading(false);
-        await logMemberLoginDirect(cleanEmail, 'success_google', 'গুগল দিয়ে লগইন করে সফলভাবে সুপার এডমিন সেশন চালু করা হয়েছে।');
-        return;
-      }
-
-      const matched = memberships.find(m => m.email?.toLowerCase() === cleanEmail);
-
-      if (!matched) {
-        setErrorMsg('দুঃখিত, এই Google ইমেইলের বিপরীতে আমাদের ডাটাবেজে কোনো সদস্যপদ পাওয়া যায়নি। অনুগ্রহ করে প্রথমে "সদস্য হতে আবেদন করুন" ফর্ম দিয়ে আবেদন সম্পন্ন করুন।');
-        setLoading(false);
-        await logMemberLoginDirect(cleanEmail, 'failed_google', 'গুগল দিয়ে অনিবন্ধিত ইমেইলে পোর্টাল লগইনের ব্যর্থ চেষ্টা।');
-        return;
-      }
-
-      if (matched.status === 'pending') {
-        setErrorMsg('আপনার মেম্বারশিপ আবেদনটি এখনও জেলা দপ্তরে প্রক্রিয়াধীন (Pending) আছে। এটি অনুমোদিত হওয়ার পরে গুগল দিয়ে সরাসরি লগইন করতে পারবেন।');
-        setLoading(false);
-        await logMemberLoginDirect(matched.email, 'failed_google', 'গুগল পোর্টাল লগইন চেষ্টা কিন্তু মেম্বারশিপ স্ট্যাটাস এখনও অপেক্ষারত (Pending)।');
-        return;
-      }
-
-      if (matched.status === 'rejected') {
-        setErrorMsg('দুঃখিত, আপনার সদস্য ফর্ম জেলা প্যানেল দ্বারা বাতিল বা প্রত্যাখ্যাত করা হয়েছে।');
-        setLoading(false);
-        await logMemberLoginDirect(matched.email, 'failed_google', 'গুগল দিয়ে প্রত্যাখ্যাত আবেদন নিয়ে পোর্টাল লগইন চেষ্টা।');
-        return;
-      }
-
-      if (matched.status === 'verified') {
-        // Success login
-        onLogin(matched.email);
-        setLoading(false);
-        await logMemberLoginDirect(matched.email, 'success_google', `সদস্য "${matched.name}" গুগল পোর্টাল দিয়ে সিস্টেমে সফল লগইন করেছেন।`);
-      }
+      await initiateGoogleSignIn({ actionType: 'portal_login' });
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err.message || 'গুগল দিয়ে লগইন করার সময় কোনো ত্রুটি ঘটেছে। পুনরায় চেষ্টা করুন।');

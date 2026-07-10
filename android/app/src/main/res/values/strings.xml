@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">সমাজতান্ত্রিক ছাত্র ফ্রন্ট</string>
+    <string name="title_activity_main">সমাজতান্ত্রিক ছাত্র ফ্রন্ট</string>
+    <string name="package_name">bd.pro.ssfmym</string>
+    <string name="custom_url_scheme">bd.pro.ssfmym</string>
+</resources>

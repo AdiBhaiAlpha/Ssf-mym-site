@@ -4,9 +4,10 @@ import {
   Terminal, X, RotateCcw, Copy, Download, Search, AlertCircle, 
   Settings, ChevronRight, Play, Pause, ArrowDown, Activity, 
   Image, Layers, Globe, Server, Code, FileText, Maximize2, Minimize2, 
-  Database, RefreshCw, Cpu, CheckCircle2, Flame, AlertOctagon
+  Database, RefreshCw, Cpu, CheckCircle2, Flame, AlertOctagon, ShieldCheck
 } from 'lucide-react';
 import { DebugLogger, LogEntry, NetworkRequest, ImageDebugInfo, CanvasDebugInfo, MemoryMetric, LogLevel } from '../lib/debug/DebugLogger';
+import { authDiagnostics } from '../lib/authService';
 
 interface DebugConsoleProps {
   isOpen: boolean;
@@ -16,7 +17,7 @@ interface DebugConsoleProps {
 export default function DebugConsole({ isOpen, setIsOpen }: DebugConsoleProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [dock, setDock] = useState<'left' | 'right' | 'bottom' | 'floating' | 'fullscreen'>('bottom');
-  const [activeTab, setActiveTab] = useState<'logs' | 'network' | 'images' | 'canvas' | 'memory' | 'errors' | 'source'>('logs');
+  const [activeTab, setActiveTab] = useState<'logs' | 'network' | 'images' | 'canvas' | 'memory' | 'errors' | 'source' | 'auth'>('logs');
   
   // Real-time state
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -24,6 +25,7 @@ export default function DebugConsole({ isOpen, setIsOpen }: DebugConsoleProps) {
   const [images, setImages] = useState<ImageDebugInfo[]>([]);
   const [canvasInfo, setCanvasInfo] = useState<CanvasDebugInfo | null>(null);
   const [memoryHistory, setMemoryHistory] = useState<MemoryMetric[]>([]);
+  const [diagState, setDiagState] = useState(authDiagnostics.getSnapshot());
   const [isPaused, setIsPaused] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
 
@@ -53,6 +55,14 @@ export default function DebugConsole({ isOpen, setIsOpen }: DebugConsoleProps) {
   // Keyboard shortcut removed as requested by the user
   useEffect(() => {
     // Console is now an on-page live window by default.
+  }, []);
+
+  useEffect(() => {
+    setDiagState(authDiagnostics.getSnapshot());
+    const unsubscribe = authDiagnostics.subscribe(() => {
+      setDiagState(authDiagnostics.getSnapshot());
+    });
+    return unsubscribe;
   }, []);
 
   // Listen for DebugLogger changes
@@ -493,6 +503,7 @@ export default function App() {
                       { id: 'canvas', label: 'Canvas Taint Check', icon: Layers },
                       { id: 'memory', label: 'Memory Tracker', icon: Activity },
                       { id: 'errors', label: 'Smart Diagnostics', icon: AlertOctagon },
+                      { id: 'auth', label: 'Google Auth Debug', icon: ShieldCheck },
                       { id: 'source', label: 'Source Inspector', icon: Code }
                     ].map(tab => {
                       const Icon = tab.icon;
@@ -1275,6 +1286,192 @@ export default function App() {
                               </div>
                             );
                           })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {activeTab === 'auth' && (
+                    <div className="flex-grow overflow-y-auto p-4 space-y-4 font-mono text-[11px] select-text">
+                      <div className="flex justify-between items-center border-b border-zinc-200 dark:border-zinc-900 pb-2">
+                        <span className="font-bold text-[10px] uppercase text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                          <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                          Google Authentication Live Pipeline Auditor
+                        </span>
+                        <button
+                          onClick={() => authDiagnostics.reset()}
+                          className="px-2 py-0.5 border border-zinc-300 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 text-zinc-600 dark:text-zinc-400 rounded text-[9.5px] transition"
+                        >
+                          Reset Diagnostics
+                        </button>
+                      </div>
+
+                      {/* Section 1: Environment & Client Profile */}
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                        <div className="bg-zinc-50 dark:bg-zinc-900/40 p-2.5 rounded border border-zinc-200 dark:border-zinc-900">
+                          <span className="text-[8px] text-zinc-400 uppercase tracking-wider block mb-1">Detected OS</span>
+                          <span className="font-bold text-zinc-800 dark:text-zinc-250">{diagState.envOS || 'Unknown OS'}</span>
+                        </div>
+                        <div className="bg-zinc-50 dark:bg-zinc-900/40 p-2.5 rounded border border-zinc-200 dark:border-zinc-900">
+                          <span className="text-[8px] text-zinc-400 uppercase tracking-wider block mb-1">Detected Browser</span>
+                          <span className="font-bold text-zinc-800 dark:text-zinc-250">{diagState.envBrowser || 'Unknown'}</span>
+                        </div>
+                        <div className="bg-zinc-50 dark:bg-zinc-900/40 p-2.5 rounded border border-zinc-200 dark:border-zinc-900">
+                          <span className="text-[8px] text-zinc-400 uppercase tracking-wider block mb-1">WebView / In-App WebView</span>
+                          <span className={`font-bold px-1.5 py-0.2 rounded text-[10px] ${diagState.envIsWebView ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-600' : 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600'}`}>
+                            {diagState.envIsWebView ? '🔴 Yes (WebView/WebView In-App)' : '🟢 No (Standard Browser)'}
+                          </span>
+                        </div>
+                        <div className="bg-zinc-50 dark:bg-zinc-900/40 p-2.5 rounded border border-zinc-200 dark:border-zinc-900">
+                          <span className="text-[8px] text-zinc-400 uppercase tracking-wider block mb-1">Popup Support Capability</span>
+                          <span className={`font-bold px-1.5 py-0.2 rounded text-[10px] ${diagState.envSupportsPopups ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600' : 'bg-rose-100 dark:bg-rose-950/40 text-rose-600'}`}>
+                            {diagState.envSupportsPopups ? '🟢 Fully Supported' : '🔴 Restricted / Redirect Required'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Section 2: Active Auth Config */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                        <div className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded p-3 space-y-2">
+                          <h4 className="font-extrabold text-[10px] text-zinc-550 uppercase tracking-wider">Active Configuration</h4>
+                          <div className="space-y-1 text-xs">
+                            <div className="flex justify-between border-b border-zinc-100 dark:border-zinc-900 pb-1">
+                              <span className="text-zinc-450 font-sans">Primary Auth Strategy:</span>
+                              <span className="font-bold text-indigo-500">Redirect Method (signInWithRedirect)</span>
+                            </div>
+                            <div className="flex justify-between border-b border-zinc-100 dark:border-zinc-900 pb-1">
+                              <span className="text-zinc-450 font-sans">Auth Flow Decision Mechanism:</span>
+                              <span className="font-bold text-indigo-500">Autonomous (Adaptive)</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-zinc-450 font-sans">Secondary Firebase Auth:</span>
+                              <span className="font-bold text-emerald-500">Active (Connected)</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded p-3 space-y-2">
+                          <h4 className="font-extrabold text-[10px] text-zinc-550 uppercase tracking-wider">Authentication Strategy Chosen</h4>
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded">
+                              <Cpu className="w-6 h-6 text-indigo-500" />
+                            </div>
+                            <div>
+                              <span className="text-xs font-bold text-zinc-800 dark:text-zinc-100 block">
+                                {diagState.chosenMethod === 'None' ? 'No active auth event initiated' : `Method Triggered: ${diagState.chosenMethod}`}
+                              </span>
+                              <p className="text-[10px] text-zinc-450 font-sans leading-relaxed mt-0.5">
+                                The system automatically overrides Popup triggers in embedded in-app views, routing through robust redirects.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Section 3: Live Verification Pipeline Steps */}
+                      <div className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-900 rounded p-3.5 space-y-3.5">
+                        <h4 className="font-extrabold text-[10px] text-zinc-550 uppercase tracking-wider">Live Authentication Lifecycle Flow</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                          {[
+                            {
+                              label: '1. Redirect Cycle',
+                              active: diagState.redirectStarted || diagState.redirectReturned,
+                              desc: diagState.redirectReturned 
+                                ? 'Returned (Success)' 
+                                : diagState.redirectStarted 
+                                ? 'Initiated...' 
+                                : 'Awaiting start',
+                              status: diagState.redirectReturned ? 'success' : diagState.redirectStarted ? 'warning' : 'none'
+                            },
+                            {
+                              label: '2. Firebase Auth Response',
+                              active: diagState.redirectResult !== 'none',
+                              desc: diagState.redirectResult === 'success' 
+                                ? `Success (${diagState.userRetrieved || 'Verified'})` 
+                                : diagState.redirectResult === 'error' 
+                                ? 'Returned with Error' 
+                                : 'Awaiting callback',
+                              status: diagState.redirectResult === 'success' ? 'success' : diagState.redirectResult === 'error' ? 'error' : 'none'
+                            },
+                            {
+                              label: '3. Token Validation',
+                              active: diagState.tokenVerified,
+                              desc: diagState.tokenVerified 
+                                ? 'Verified successfully' 
+                                : diagState.errorMessage 
+                                ? 'Validation failed' 
+                                : 'Awaiting token verify',
+                              status: diagState.tokenVerified ? 'success' : diagState.errorMessage ? 'error' : 'none'
+                            },
+                            {
+                              label: '4. Database & Session',
+                              active: diagState.sessionCreated || diagState.dbLookupStatus !== 'none',
+                              desc: diagState.sessionCreated 
+                                ? 'Database Linked & Session Active' 
+                                : diagState.dbLookupStatus === 'found' 
+                                ? 'Member record resolved' 
+                                : diagState.dbLookupStatus === 'not_found' 
+                                ? 'New member (Redirecting...)' 
+                                : 'Awaiting database synch',
+                              status: diagState.sessionCreated ? 'success' : diagState.dbLookupStatus === 'not_found' ? 'warning' : 'none'
+                            }
+                          ].map((step, idx) => (
+                            <div 
+                              key={idx} 
+                              className={`p-2.5 rounded border flex flex-col justify-between ${
+                                step.status === 'success'
+                                  ? 'bg-emerald-50/40 dark:bg-emerald-950/15 border-emerald-300 dark:border-emerald-900/60'
+                                  : step.status === 'warning'
+                                  ? 'bg-amber-50/40 dark:bg-amber-950/15 border-amber-300 dark:border-amber-900/60'
+                                  : step.status === 'error'
+                                  ? 'bg-rose-50/40 dark:bg-rose-950/15 border-rose-300 dark:border-rose-900/60'
+                                  : 'bg-zinc-50 dark:bg-zinc-900/20 border-zinc-200 dark:border-zinc-900'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-[10px] text-zinc-700 dark:text-zinc-350">{step.label}</span>
+                                <span className={`w-2 h-2 rounded-full ${
+                                  step.status === 'success' 
+                                    ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse' 
+                                    : step.status === 'warning' 
+                                    ? 'bg-amber-500 animate-pulse' 
+                                    : step.status === 'error' 
+                                    ? 'bg-rose-500' 
+                                    : 'bg-zinc-300 dark:bg-zinc-700'
+                                }`} />
+                              </div>
+                              <span className="text-[10px] text-zinc-650 dark:text-zinc-400 mt-2 font-medium block">{step.desc}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Section 4: Diagnostics Error / Suggestions Panel */}
+                      {diagState.errorMessage && (
+                        <div className="bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200/80 dark:border-rose-900/40 rounded p-4 space-y-3.5">
+                          <div className="flex items-center gap-2 text-rose-700 dark:text-rose-400 font-extrabold text-[11px]">
+                            <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                            <span>Authentication Failure Diagnostic Report</span>
+                          </div>
+
+                          <div className="bg-white dark:bg-zinc-950 border border-rose-200/40 dark:border-rose-900/20 rounded p-2 text-xs font-sans text-rose-700 dark:text-rose-350 leading-relaxed font-bold">
+                            ⚠️ {diagState.errorMessage}
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-900 rounded p-2.5 space-y-1">
+                              <span className="text-[8px] text-zinc-400 uppercase tracking-wider block">Detailed Technical Reason</span>
+                              <p className="text-zinc-700 dark:text-zinc-400 font-sans leading-relaxed text-[10.5px]">
+                                {diagState.technicalError || 'No additional SDK technical payload reported.'}
+                              </p>
+                            </div>
+                            <div className="bg-emerald-50/20 dark:bg-emerald-950/10 border border-emerald-200/40 dark:border-emerald-900/10 rounded p-2.5 space-y-1">
+                              <span className="text-[8px] text-emerald-500 uppercase tracking-wider block">Suggested Action to Fix</span>
+                              <p className="text-zinc-800 dark:text-zinc-200 font-sans font-medium leading-relaxed text-[10.5px]">
+                                💡 {diagState.suggestedFix || 'Please try standard mobile browser (Google Chrome or Apple Safari).'}
+                              </p>
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>

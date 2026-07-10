@@ -9,25 +9,63 @@
 @variant dark (&:where(.dark, .dark *));
 
 @media print {
-  /* Hide the main app container completely */
-  #root, .no-print, .print-hidden {
-    display: none !important;
-  }
+  /* ----------------------------------
+     GENERAL PRINT DEFAULTS & RESETS
+     ---------------------------------- */
   
-  /* Reset document styles to prevent blank pages and 18-page overflow bug */
-  html, body {
-    margin: 0 !important;
-    padding: 0 !important;
-    width: 210mm !important;  /* A4 Portrait Width */
-    height: 297mm !important; /* A4 Portrait Height */
-    background: #ffffff !important;
-    overflow: hidden !important;
+  /* Ensure all browsers print full background colors and images faithfully */
+  * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+    color-adjust: exact !important;
   }
 
-  /* Full screen flex container centering the ID card on A4 portrait */
-  #member-identity-card-print-container {
+  /* Hide screen-only interactive and non-content elements */
+  .no-print, 
+  .print-hidden,
+  nav, 
+  footer, 
+  header, 
+  iframe,
+  button,
+  .breaking-news,
+  #electoral-info,
+  [role="dialog"],
+  #unsupported-browser-modal,
+  .debug-console,
+  .live-export-debugger,
+  .photo-card-builder-modal,
+  #member-identity-card-print-container-screen-trigger {
+    display: none !important;
+  }
+
+  /* Document body print standards */
+  html, body {
+    background: #ffffff !important;
+    color: #111827 !important;
+    font-family: "Hind Siliguri", "Inter", sans-serif !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* ----------------------------------
+     MODE 1: ID CARD PRINTING
+     (Active when member portal card print is requested)
+     ---------------------------------- */
+  body:has(#member-identity-card-print-container) {
+    overflow: hidden !important;
+    height: 100vh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Hide the rest of the application so only the portal card prints */
+  body:has(#member-identity-card-print-container) #root {
+    display: none !important;
+  }
+
+  /* Set up the ID Card print container to stretch full page and center the card */
+  body:has(#member-identity-card-print-container) #member-identity-card-print-container {
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -36,10 +74,12 @@
     margin: 0 !important;
     padding: 0 !important;
     box-sizing: border-box !important;
+    background: #ffffff !important;
+    page: cardPage !important;
   }
 
-  /* Standard Credit Card dimensions (85.6mm x 54mm) with high quality print layout */
-  .printable-id-card {
+  /* Standard Credit Card physical dimensions (85.6mm x 54mm) with high quality printing metrics */
+  body:has(#member-identity-card-print-container) .printable-id-card {
     display: flex !important;
     flex-direction: column !important;
     justify-content: space-between !important;
@@ -61,14 +101,177 @@
     zoom: 1 !important;
   }
 
-  /* Ensure colors and images are printed faithfully in browsers */
-  .printable-id-card * {
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
+  /* Apply special zero margins specifically to the ID card page */
+  @page cardPage {
+    size: A4 portrait;
+    margin: 0 !important;
   }
 
-  @page {
-    size: A4 portrait !important;
+  /* ----------------------------------
+     MODE 2: ARTICLE & EVENT DETAILS A4 PDF PRINTING
+     (Active when printing news/blog articles and event details)
+     ---------------------------------- */
+  body:not(:has(#member-identity-card-print-container)) {
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  /* Hide ID card print container if we are printing an article */
+  body:not(:has(#member-identity-card-print-container)) #member-identity-card-print-container {
+    display: none !important;
+  }
+
+  /* Let the main container take full width of A4 */
+  body:not(:has(#member-identity-card-print-container)) #root {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
     margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  /* Flatten flex/grid wrappers to full-width block rows for natural paging */
+  body:not(:has(#member-identity-card-print-container)) .grid {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  /* Format the main article content area beautifully, stripping site elements */
+  body:not(:has(#member-identity-card-print-container)) .printable-article-body {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  /* Add dynamic branding header banner at the top of A4 page */
+  body:not(:has(#member-identity-card-print-container)) .printable-article-body::before {
+    content: "সমাজতান্ত্রিক ছাত্র ফ্রন্ট — ময়মনসিংহ জেলা কমিটি" !important;
+    display: block !important;
+    font-size: 11pt !important;
+    font-weight: bold !important;
+    text-transform: uppercase !important;
+    color: #e11d48 !important; /* Rose Red Accent */
+    border-bottom: 2px solid #e11d48 !important;
+    padding-bottom: 6px !important;
+    margin-bottom: 24px !important;
+    text-align: center !important;
+  }
+
+  /* H1 Headline spacing and sizes */
+  body:not(:has(#member-identity-card-print-container)) .printable-article-body h1 {
+    font-size: 26pt !important;
+    line-height: 1.3 !important;
+    color: #0f172a !important; /* Deep charcoal */
+    font-weight: 800 !important;
+    margin-top: 0 !important;
+    margin-bottom: 14pt !important;
+    page-break-after: avoid !important;
+  }
+
+  /* Uniform Category Badge decoration */
+  body:not(:has(#member-identity-card-print-container)) .printable-article-body span.text-rose-600,
+  body:not(:has(#member-identity-card-print-container)) .printable-article-body span.text-rose-400 {
+    font-size: 10pt !important;
+    font-weight: bold !important;
+    color: #be123c !important;
+    background-color: #fff1f2 !important;
+    border: 1px solid #fecdd3 !important;
+    padding: 4px 10px !important;
+    border-radius: 4px !important;
+    display: inline-block !important;
+    margin-bottom: 12pt !important;
+  }
+
+  /* Metadata strip (Date, Reporter, View counts etc.) */
+  body:not(:has(#member-identity-card-print-container)) .printable-article-body .flex-wrap {
+    font-size: 9.5pt !important;
+    color: #4b5563 !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    padding-bottom: 10px !important;
+    margin-bottom: 18pt !important;
+    page-break-after: avoid !important;
+  }
+
+  /* Standardize large hero featured images */
+  body:not(:has(#member-identity-card-print-container)) .printable-article-body img {
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: 80mm !important;
+    object-fit: cover !important;
+    border-radius: 6px !important;
+    margin-bottom: 20pt !important;
+    page-break-inside: avoid !important;
+    border: 1px solid #e2e8f0 !important;
+  }
+
+  /* Prose article content text styling */
+  body:not(:has(#member-identity-card-print-container)) .printable-article-body article {
+    font-size: 11pt !important;
+    line-height: 1.7 !important;
+    color: #1f2937 !important;
+    text-align: justify !important;
+    font-family: "Hind Siliguri", "Inter", sans-serif !important;
+  }
+
+  body:not(:has(#member-identity-card-print-container)) .printable-article-body article p {
+    margin-bottom: 14pt !important;
+  }
+
+  /* Structured Event Venue and Time boxes */
+  body:not(:has(#member-identity-card-print-container)) .printable-article-body .grid-cols-1 {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 15px !important;
+    margin-top: 24pt !important;
+    margin-bottom: 24pt !important;
+    page-break-inside: avoid !important;
+  }
+
+  body:not(:has(#member-identity-card-print-container)) .printable-article-body .grid-cols-1 > div {
+    background-color: #fafafa !important;
+    border: 1px solid #e4e4e7 !important;
+    padding: 14px !important;
+    border-radius: 6px !important;
+  }
+
+  body:not(:has(#member-identity-card-print-container)) .printable-article-body .grid-cols-1 h4 {
+    font-size: 11pt !important;
+    color: #0f172a !important;
+    font-weight: bold !important;
+    margin-bottom: 4px !important;
+  }
+
+  body:not(:has(#member-identity-card-print-container)) .printable-article-body .grid-cols-1 p {
+    font-size: 9.5pt !important;
+    color: #4b5563 !important;
+  }
+
+  /* Printable tags row formatting */
+  body:not(:has(#member-identity-card-print-container)) .printable-article-body .flex-wrap.gap-2 {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    margin-top: 18pt !important;
+    page-break-inside: avoid !important;
+  }
+
+  body:not(:has(#member-identity-card-print-container)) .printable-article-body .flex-wrap.gap-2 span {
+    border: 1px solid #e4e4e7 !important;
+    background-color: #fafafa !important;
+    color: #4b5563 !important;
+    font-size: 8.5pt !important;
+    padding: 3px 8px !important;
+    border-radius: 4px !important;
+  }
+
+  /* Global page parameters for default multi-page A4 printouts */
+  @page {
+    size: A4 portrait;
+    margin: 20mm 15mm 20mm 15mm !important;
   }
 }

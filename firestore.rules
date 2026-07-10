@@ -67,6 +67,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Auth exchanges collection for secure token exchange
+    match /authExchanges/{docId} {
+      allow read, write, delete: if true;
+    }
+
     // Invitations collection
     match /invitations/{docId} {
       allow read, write: if true;

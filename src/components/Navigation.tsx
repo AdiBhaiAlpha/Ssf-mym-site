@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Menu, X, Sun, Moon, LogIn, LogOut, ShieldAlert, Award, FileText, Newspaper, BookOpen, Calendar, HelpCircle, Mail, Search, Bell, Terminal } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { saveFirestoreDoc, secondaryAuth, secondaryGoogleProvider } from '../firebase';
-import { signInWithPopup } from 'firebase/auth';
+import { initiateGoogleSignIn } from '../lib/authService';
 import { useToast } from './Toast';
 
 interface NavigationProps {
@@ -116,6 +116,51 @@ export default function Navigation({
       )
     : [];
 
+  // Restore and display pending modal state or messages on page reload from redirect
+  React.useEffect(() => {
+    // 1. Check for registration success message from redirect
+    const successMsg = localStorage.getItem('scf_nav_reg_success_msg');
+    if (successMsg) {
+      setRegSuccess(successMsg);
+      setShowLoginModal(true);
+      setSignupMode(true);
+      localStorage.removeItem('scf_nav_reg_success_msg');
+    }
+
+    // 2. Check for restored inputs
+    const savedRegInputs = localStorage.getItem('scf_pending_nav_reg_inputs');
+    if (savedRegInputs) {
+      try {
+        const parsed = JSON.parse(savedRegInputs);
+        if (parsed) {
+          setRegName(parsed.name || '');
+          setRegEmail(parsed.email || '');
+          setRegMobile(parsed.mobile || '');
+          setRegInstitution(parsed.institution || '');
+          setRegPassword(parsed.password || '');
+          setRegType(parsed.type || 'member');
+          setRegDob(parsed.dob || '');
+          setRegBloodGroup(parsed.bloodGroup || '');
+          
+          setShowLoginModal(true);
+          setSignupMode(true);
+          
+          if (localStorage.getItem('scf_pending_nav_verification') === 'true') {
+            setRegVerificationPending(true);
+          }
+        }
+      } catch (e) {
+        console.error('Error restoring nav registration inputs:', e);
+      }
+    }
+    
+    // 3. Check if we should open the login modal generally
+    if (localStorage.getItem('scf_show_login_modal_on_load') === 'true') {
+      setShowLoginModal(true);
+      localStorage.removeItem('scf_show_login_modal_on_load');
+    }
+  }, []);
+
   // Browser Push Notifications
   React.useEffect(() => {
     if (userEmail && invitations && typeof window !== 'undefined' && 'Notification' in window) {
@@ -166,72 +211,12 @@ export default function Navigation({
   const handleGoogleSignInFlow = async () => {
     try {
       setLoginError('');
-      const result = await signInWithPopup(secondaryAuth, secondaryGoogleProvider);
-      const user = result.user;
-      if (!user || !user.email) {
-        throw new Error('গুগল অ্যাকাউন্ট থেকে ইমেল পাওয়া যায়নি।');
-      }
-
-      const emailVal = user.email.toLowerCase().trim();
-
-      // Check if is Super Admin
-      if (emailVal === 'chitronbhattacharjee@gmail.com') {
-        onLogin(emailVal);
-        setShowLoginModal(false);
-        toast.success('সুপার এডমিন হিসেবে গুগল লগইন সফল হয়েছে!');
-        logMemberLoginDirect(emailVal, 'success', 'সুপার এডমিন (চিত্রণ ভট্টাচার্য) গুগল দিয়ে সরাসরি পোর্টালে প্রবেশ করেছেন।');
-        return;
-      }
-
-      // Check if user exists in memberships list
-      const foundMember = memberships.find(m => m.email?.toLowerCase().trim() === emailVal);
-      if (!foundMember) {
-        toast.error('This Google account is not linked with any approved member account.');
-        setLoginError('This Google account is not linked with any approved member account. (এই গুগল অ্যাকাউন্টটি কোনো অনুমোদিত সদস্য অ্যাকাউন্টের সাথে যুক্ত নয়।)');
-        logMemberLoginDirect(emailVal, 'failed', 'অনিবন্ধিত গুগল একাউন্ট দিয়ে লগইনের চেষ্টা।');
-        return;
-      }
-
-      if (foundMember.status === 'pending') {
-        const msg = 'আপনার মেম্বারশিপ আবেদনটি বর্তমানে মূল্যায়নাধীন (Pending) রয়েছে। জেলা দপ্তর সেল অনুমোদন করার পর সরাসরি ড্যাশবোর্ড সক্রিয় হবে।';
-        toast.warning(msg);
-        setLoginError(msg);
-        logMemberLoginDirect(emailVal, 'failed', 'আবেদন পেন্ডিং থাকা অবস্থায় গুগল লগইন চেষ্টা।');
-        return;
-      }
-
-      if (foundMember.status === 'rejected') {
-        const msg = 'দুঃখিত, আপনার মেম্বারশিপ আবেদনটি জেলা সেল দ্বারা প্রত্যাখ্যাত হয়েছে।';
-        toast.error(msg);
-        setLoginError(msg);
-        logMemberLoginDirect(emailVal, 'failed', 'প্রত্যাখ্যাত আবেদন থাকা অবস্থায় গুগল লগইন চেষ্টা।');
-        return;
-      }
-
-      if (foundMember.status === 'verified') {
-        // Successful Google login
-        // Save Google login metadata back to Firestore for the user record
-        const updatedDoc = {
-          ...foundMember,
-          googleUid: user.uid,
-          googleEmail: user.email,
-          googlePhoto: user.photoURL || '',
-          lastGoogleLogin: new Date().toISOString().replace('T', ' ').substring(0, 19)
-        };
-        await saveFirestoreDoc('memberships', foundMember.id, updatedDoc);
-
-        onLogin(foundMember.email);
-        setCurrentTab('member-portal');
-        setShowLoginModal(false);
-        toast.success(`স্বাগতম কমরেড ${foundMember.name}! গুগল সাইন-ইন সফল হয়েছে।`);
-        logMemberLoginDirect(foundMember.email, 'success', `সদস্য "${foundMember.name}" গুগল সাইন-ইন দিয়ে সফলভাবে লগইন করেছেন।`);
-      }
+      localStorage.setItem('scf_show_login_modal_on_load', 'true');
+      await initiateGoogleSignIn({ actionType: 'nav_login' });
     } catch (error: any) {
       console.error('Google Auth Error:', error);
-      if (error.code !== 'auth/popup-closed-by-user') {
-        toast.error(error.message || 'গুগল সাইন-ইন করার সময় কোনো ত্রুটি ঘটেছে।');
-        setLoginError(error.message || 'গুগল সাইন-ইন করার সময় কোনো ত্রুটি ঘটেছে।');
-      }
+      toast.error(error.message || 'গুগল সাইন-ইন করার সময় কোনো ত্রুটি ঘটেছে।');
+      setLoginError(error.message || 'গুগল সাইন-ইন করার সময় কোনো ত্রুটি ঘটেছে।');
     }
   };
 
@@ -240,64 +225,24 @@ export default function Navigation({
       setRegLoading(true);
       setRegVerificationError('');
       
-      const result = await signInWithPopup(secondaryAuth, secondaryGoogleProvider);
-      const user = result.user;
-      if (!user || !user.email) {
-        throw new Error('গুগল অ্যাকাউন্ট থেকে ইমেইল এড্রেস পাওয়া যায়নি।');
-      }
+      const inputs = {
+        name: regName,
+        email: regEmail,
+        mobile: regMobile,
+        institution: regInstitution,
+        password: regPassword,
+        type: regType,
+        dob: regDob,
+        bloodGroup: regBloodGroup
+      };
 
-      const googleEmailLower = user.email.toLowerCase().trim();
-      const enteredEmailLower = regEmail.toLowerCase().trim();
-
-      if (googleEmailLower !== enteredEmailLower) {
-        setRegVerificationError(`The selected Google account does not match the email address entered during registration. (নির্বাচনকৃত গুগল অ্যাকাউন্ট "${user.email}" আপনার ফর্মে দেওয়া ইমেইল "${regEmail}" এর সাথে হুবহু মেলেনি।)`);
-        setRegLoading(false);
-        return;
-      }
-
-      // If it matches, complete registration!
-      if (onRegisterMember) {
-        const added = await onRegisterMember({
-          name: regName.trim(),
-          mobile: regMobile.trim(),
-          email: regEmail.trim().toLowerCase(),
-          password: regPassword.trim(),
-          institution: regInstitution.trim(),
-          department: '',
-          academicYear: '',
-          address: 'অনলাইন সাইনআপ ফর্ম',
-          dob: regDob,
-          bloodGroup: regBloodGroup,
-          type: regType,
-          // New security verification fields
-          emailVerified: true,
-          verifiedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
-          verifiedMethod: 'Google OAuth',
-          googleUid: user.uid,
-          googleEmail: user.email,
-          googlePhoto: user.photoURL || ''
-        });
-
-        if (added) {
-          setRegSuccess(`বিপ্লবী শুভেচ্ছা কমরেড ${regName.trim()}! নতুন অ্যাকাউন্ট ও সদস্যপদের আবেদনটি সফলভাবে নিবন্ধিত হয়েছে। জেলা দপ্তর সেল আবেদনটি ভেরিফাই ও অনুমোদন করার পর আপনি সরাসরি এই ইমেইল দিয়ে ডাটাবেজ পোর্টালে লগইন করতে পারবেন।`);
-          setRegName('');
-          setRegEmail('');
-          setRegMobile('');
-          setRegInstitution('');
-          setRegDob('');
-          setRegBloodGroup('');
-          setRegVerificationPending(false);
-          setRegVerificationError('');
-        } else {
-          setRegVerificationError('দুঃখিত, আবেদনপত্রটি ডাটাবেজে সাবমিট করা যায়নি। দয়া করে পুনরায় চেষ্টা করুন।');
-        }
-      }
+      await initiateGoogleSignIn({
+        actionType: 'nav_register_verify',
+        pendingInputs: inputs
+      });
     } catch (err: any) {
       console.error(err);
-      if (err.code !== 'auth/popup-closed-by-user') {
-        setRegVerificationError(err.message || 'গুগল ভেরিফিকেশন করার সময় কোনো ত্রুটি ঘটেছে।');
-      }
-    } finally {
+      setRegVerificationError(err.message || 'গুগল ভেরিফিকেশন করার সময় কোনো ত্রুটি ঘটেছে।');
       setRegLoading(false);
     }
   };

@@ -18,19 +18,41 @@ import AdminDashboard from './components/AdminDashboard';
 import CardVerificationModal from './components/CardVerificationModal';
 import { AppDatabase } from './server/db-initial';
 import { Volume2, RefreshCw, Smartphone, Monitor, ChevronRight } from 'lucide-react';
-import { fetchFirestoreDatabase, saveFirestoreDoc, deleteFirestoreDoc, resetFirestoreDatabase } from './firebase';
+import { fetchFirestoreDatabase, saveFirestoreDoc, deleteFirestoreDoc, resetFirestoreDatabase, secondaryAuth, secondaryGoogleProvider, db as firestoreDb } from './firebase';
+import { getRedirectResult, signInWithCredential, GoogleAuthProvider, signInWithRedirect } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { Capacitor } from '@capacitor/core';
+import { authDiagnostics, validateFirebaseUser, decomposeAuthError, logMemberLoginDirect } from './lib/authService';
 import { motion, AnimatePresence } from 'motion/react';
 import { updateSEOMetadata } from './lib/seo';
 import { useToast } from './components/Toast';
 import ContentDetails from './components/ContentDetails';
 import DebugConsole from './components/DebugConsole';
 import LiveExportDebugger from './components/LiveExportDebugger';
+import UnsupportedBrowserModal from './components/UnsupportedBrowserModal';
+import { BrowserProfile } from './lib/BrowserDetection';
 
 export default function App() {
   const toast = useToast();
   const [currentTab, setCurrentTab] = useState('home');
   const [darkMode, setDarkMode] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+
+  // Native Auth Flow State
+  const [isNativeAuth, setIsNativeAuth] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('nativeAuth') === 'true') {
+        setIsNativeAuth(true);
+      }
+    }
+  }, []);
+
+  // Unsupported Browser Modal State
+  const [unsupportedModalOpen, setUnsupportedModalOpen] = useState(false);
+  const [detectedBrowserProfile, setDetectedBrowserProfile] = useState<BrowserProfile | null>(null);
 
   // Active Details state for clicking on any card item
   const [activeDetails, setActiveDetails] = useState<{ type: string; id: string } | null>(null);
@@ -63,6 +85,196 @@ export default function App() {
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Deep linking and Capacitor event listener setup
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let appUrlListener: any = null;
+
+    const setupDeepLinks = async () => {
+      try {
+        const { App } = await import('@capacitor/app');
+        const { Browser } = await import('@capacitor/browser');
+
+        appUrlListener = await App.addListener('appUrlOpen', async (data: any) => {
+          try {
+            console.log('App received URL scheme:', data.url);
+            
+            // Support both ssfmym://auth-callback and https://ssfmym.pro.bd/auth-callback formats
+            if (data.url.includes('auth-callback')) {
+              const parsedUrl = new URL(data.url.replace('ssfmym://', 'https://ssfmym.pro.bd/'));
+              const params = parsedUrl.searchParams;
+              const code = params.get('code');
+              const action = params.get('action') || 'portal_login';
+
+              if (code) {
+                setAuthProcessing(true);
+                toast.info('গুগল লগইন ভেরিফাই করা হচ্ছে...');
+
+                // Try to close the browser (Chrome Custom Tab)
+                try {
+                  await Browser.close();
+                } catch (browserError) {
+                  console.warn('Could not automatically close Custom Tab:', browserError);
+                }
+
+                let exchangeData: any = null;
+                try {
+                  const exchangeDocRef = doc(firestoreDb, 'authExchanges', code);
+                  const exchangeSnap = await getDoc(exchangeDocRef);
+
+                  if (!exchangeSnap.exists()) {
+                    toast.error('ভেরিফিকেশন লিংকটি সঠিক নয় বা মেয়াদোত্তীর্ণ হয়েছে।');
+                    setAuthProcessing(false);
+                    return;
+                  }
+
+                  exchangeData = exchangeSnap.data();
+
+                  // Delete the code immediately to enforce one-time usage security
+                  await deleteFirestoreDoc('authExchanges', code);
+
+                  if (exchangeData.used) {
+                    toast.error('কোডটি ইতিমধ্যে ব্যবহার করা হয়েছে।');
+                    setAuthProcessing(false);
+                    return;
+                  }
+
+                  const createdAt = new Date(exchangeData.createdAt).getTime();
+                  const now = new Date().getTime();
+                  if (now - createdAt > 120 * 1000) {
+                    toast.error('কোডের মেয়াদ শেষ হয়েছে (২ মিনিটের বেশি পার হয়েছে)।');
+                    setAuthProcessing(false);
+                    return;
+                  }
+                } catch (exchErr: any) {
+                  console.error('Exchange error:', exchErr);
+                  toast.error('ভেরিফিকেশন তথ্য সংগ্রহ করা যায়নি: ' + exchErr.message);
+                  setAuthProcessing(false);
+                  return;
+                }
+
+                const { idToken, accessToken } = exchangeData;
+
+                if (idToken) {
+                  // Create credential and sign in using Google ID Token and Access Token
+                  const credential = GoogleAuthProvider.credential(idToken, accessToken || undefined);
+                  const userCredential = await signInWithCredential(secondaryAuth, credential);
+                  const user = userCredential.user;
+
+                  // Validate the user
+                  const valReport = await validateFirebaseUser(user);
+                  if (!valReport.isValid) {
+                    toast.error(valReport.reason || 'Authentication verification failed.');
+                    setAuthProcessing(false);
+                    return;
+                  }
+
+                  const emailVal = valReport.email!.toLowerCase().trim();
+
+                  // 1. Check Super Admin
+                  if (emailVal === 'chitronbhattacharjee@gmail.com') {
+                    await handleLogin(emailVal);
+                    toast.success('সুপার এডমিন হিসেবে গুগল লগইন সফল হয়েছে!');
+                    await logMemberLoginDirect(emailVal, 'success', 'সুপার এডমিন (চিত্রণ ভট্টাচার্য) গুগল দিয়ে সরাসরি পোর্টালে প্রবেশ করেছেন।');
+                    setCurrentTab('member-portal');
+                    cleanupRedirectStorage();
+                    setAuthProcessing(false);
+                    return;
+                  }
+
+                  // Search in memberships list
+                  const memberships = db ? (db.memberships || []) : [];
+                  const foundMember = memberships.find(m => m.email?.toLowerCase().trim() === emailVal);
+
+                  if (action === 'nav_login' || action === 'portal_login') {
+                    if (!foundMember) {
+                      toast.warning('দুঃখিত, এই গুগল অ্যাকাউন্টের বিপরীতে কোনো সদস্য অ্যাকাউন্ট পাওয়া যায়নি।');
+                      
+                      // Autofill fields for the registration form
+                      const autofillData = {
+                        name: valReport.displayName || '',
+                        email: emailVal,
+                        gender: '',
+                        organization: '',
+                        unit: '',
+                        education: '',
+                        phone: '',
+                        photoUrl: valReport.photoURL || '',
+                      };
+                      localStorage.setItem('scf_pending_nav_reg_inputs', JSON.stringify(autofillData));
+                      localStorage.setItem('scf_pending_nav_verification', 'true');
+                      setCurrentTab('membership-form');
+                    } else {
+                      await handleLogin(emailVal);
+                      toast.success('সদস্য পোর্টালে গুগল লগইন সফল হয়েছে!');
+                      await logMemberLoginDirect(emailVal, 'success', 'গুগল লগইন ব্যবহার করে সদস্য পোর্টালে প্রবেশ করেছেন।');
+                      setCurrentTab('member-portal');
+                    }
+                  } else if (action === 'member_form_verify') {
+                    // If verifying on membership form, prefill the inputs
+                    const storedInputsStr = localStorage.getItem('scf_pending_form_reg_inputs');
+                    if (storedInputsStr) {
+                      try {
+                        const inputs = JSON.parse(storedInputsStr);
+                        inputs.email = emailVal;
+                        inputs.name = inputs.name || valReport.displayName || '';
+                        inputs.photoUrl = inputs.photoUrl || valReport.photoURL || '';
+                        localStorage.setItem('scf_pending_form_reg_inputs', JSON.stringify(inputs));
+                      } catch (e) {
+                        console.error(e);
+                      }
+                    }
+                    toast.success('গুগল অ্যাকাউন্ট ভেরিফিকেশন সফল হয়েছে!');
+                    const event = new CustomEvent('google-verify-success', { detail: { email: emailVal, photoUrl: valReport.photoURL } });
+                    window.dispatchEvent(event);
+                  }
+
+                  cleanupRedirectStorage();
+                  setAuthProcessing(false);
+                }
+              }
+            }
+          } catch (innerErr: any) {
+            console.error('Deep link inner parsing failed:', innerErr);
+            toast.error('ডিপ লিংক ভেরিফিকেশন ব্যর্থ হয়েছে: ' + innerErr.message);
+            setAuthProcessing(false);
+          }
+        });
+      } catch (err) {
+        console.error('Error in deep link setup:', err);
+      }
+    };
+
+    setupDeepLinks();
+
+    return () => {
+      if (appUrlListener) {
+        appUrlListener.then((listener: any) => {
+          if (listener && typeof listener.remove === 'function') {
+            listener.remove();
+          }
+        }).catch(console.error);
+      }
+    };
+  }, [db]);
+
+  // Listen for unsupported browser sign-in events
+  useEffect(() => {
+    const handleUnsupportedBrowser = (event: Event) => {
+      const customEvent = event as CustomEvent<BrowserProfile>;
+      if (customEvent.detail) {
+        setDetectedBrowserProfile(customEvent.detail);
+        setUnsupportedModalOpen(true);
+      }
+    };
+
+    window.addEventListener('unsupported-browser-sign-in', handleUnsupportedBrowser);
+    return () => {
+      window.removeEventListener('unsupported-browser-sign-in', handleUnsupportedBrowser);
     };
   }, []);
 
@@ -1238,6 +1450,329 @@ export default function App() {
     return null;
   };
 
+  // Google Authentication Redirect Result Handler
+  const [authProcessing, setAuthProcessing] = useState(false);
+
+  useEffect(() => {
+    if (!db) return; // Wait until database is fetched to allow member lookup
+    
+    const handleRedirect = async () => {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const isNativeAuthFlow = urlParams.get('nativeAuth') === 'true';
+        const nativeAuthAction = urlParams.get('action') || 'portal_login';
+
+        if (isNativeAuthFlow) {
+          setAuthProcessing(true);
+          const result = await getRedirectResult(secondaryAuth);
+          if (result && result.user) {
+            const credential = GoogleAuthProvider.credentialFromResult(result);
+            const idToken = credential?.idToken;
+            const accessToken = credential?.accessToken;
+            if (idToken) {
+              // Generate secure exchange code
+              const array = new Uint8Array(16);
+              window.crypto.getRandomValues(array);
+              const exchangeCode = Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+
+              // Save the exchange credentials securely in Firestore
+              await saveFirestoreDoc('authExchanges', exchangeCode, {
+                idToken,
+                accessToken: accessToken || '',
+                createdAt: new Date().toISOString(),
+                used: false
+              });
+
+              // Construct secure deepLinkUrl passing ONLY the exchange code
+              const deepLinkUrl = `ssfmym://auth-callback?code=${exchangeCode}&action=${nativeAuthAction}`;
+              window.location.href = deepLinkUrl;
+              return;
+            }
+          } else {
+            if (secondaryAuth.currentUser) {
+              await secondaryAuth.signOut();
+            }
+            localStorage.setItem('auth_redirect_action', nativeAuthAction);
+            await signInWithRedirect(secondaryAuth, secondaryGoogleProvider);
+            return;
+          }
+          return;
+        }
+
+        const action = localStorage.getItem('auth_redirect_action');
+        if (!action) return;
+
+        setAuthProcessing(true);
+        authDiagnostics.update({ redirectReturned: true });
+        
+        const result = await getRedirectResult(secondaryAuth);
+        if (!result || !result.user) {
+          authDiagnostics.update({ redirectResult: 'none' });
+          setAuthProcessing(false);
+          return;
+        }
+
+        authDiagnostics.update({ redirectResult: 'success', userRetrieved: result.user.email });
+
+        // Validate user using our secure pipeline
+        const valReport = await validateFirebaseUser(result.user);
+        if (!valReport.isValid) {
+          const errMsg = valReport.reason || 'Authentication validation failed.';
+          toast.error(errMsg);
+          authDiagnostics.update({ 
+            tokenVerified: false, 
+            errorMessage: errMsg,
+            technicalError: 'Validation failed in validateFirebaseUser.'
+          });
+          setAuthProcessing(false);
+          return;
+        }
+
+        authDiagnostics.update({ 
+          tokenVerified: true, 
+          tokenExpiration: valReport.expirationTime || null 
+        });
+
+        const emailVal = valReport.email!.toLowerCase().trim();
+
+        // 1. Check Super Admin
+        if (emailVal === 'chitronbhattacharjee@gmail.com') {
+          authDiagnostics.update({ dbLookupStatus: 'found', sessionCreated: true });
+          await handleLogin(emailVal);
+          toast.success('সুপার এডমিন হিসেবে গুগল লগইন সফল হয়েছে!');
+          await logMemberLoginDirect(emailVal, 'success', 'সুপার এডমিন (চিত্রণ ভট্টাচার্য) গুগল দিয়ে সরাসরি পোর্টালে প্রবেশ করেছেন।');
+          
+          if (action === 'portal_login') {
+            setCurrentTab('member-portal');
+          } else if (action === 'nav_login') {
+            setCurrentTab('member-portal');
+          }
+          
+          cleanupRedirectStorage();
+          setAuthProcessing(false);
+          return;
+        }
+
+        // Search in memberships list
+        const memberships = db.memberships || [];
+        const foundMember = memberships.find(m => m.email?.toLowerCase().trim() === emailVal);
+
+        if (action === 'nav_login' || action === 'portal_login') {
+          if (!foundMember) {
+            authDiagnostics.update({ dbLookupStatus: 'not_found' });
+            
+            // Prefill registration form and prompt user
+            const msg = 'দুঃখিত, এই গুগল অ্যাকাউন্টের বিপরীতে কোনো সদস্য অ্যাকাউন্ট পাওয়া যায়নি। আপনার তথ্য ফর্মটি পূরণ করে মেম্বারশিপ আবেদন সম্পন্ন করুন।';
+            toast.warning(msg);
+            
+            const autofillData = {
+              name: valReport.displayName || '',
+              email: emailVal,
+              uid: valReport.uid || '',
+              photoURL: valReport.photoURL || ''
+            };
+            localStorage.setItem('scf_member_form_autofill_data', JSON.stringify(autofillData));
+            
+            setCurrentTab('join'); // Redirect to registration page
+            
+            cleanupRedirectStorage();
+            setAuthProcessing(false);
+            return;
+          }
+
+          authDiagnostics.update({ dbLookupStatus: 'found' });
+
+          if (foundMember.status === 'pending') {
+            const msg = 'আপনার মেম্বারশিপ আবেদনটি বর্তমানে মূল্যায়নাধীন (Pending) রয়েছে। জেলা দপ্তর সেল অনুমোদন করার পর সরাসরি ড্যাশবোর্ড সক্রিয় হবে।';
+            toast.warning(msg);
+            await logMemberLoginDirect(emailVal, 'failed', 'আবেদন পেন্ডিং থাকা অবস্থায় গুগল লগইন চেষ্টা।');
+            cleanupRedirectStorage();
+            setAuthProcessing(false);
+            return;
+          }
+
+          if (foundMember.status === 'rejected') {
+            const msg = 'দুঃখিত, আপনার মেম্বারশিপ আবেদনটি জেলা সেল দ্বারা প্রত্যাখ্যাত হয়েছে।';
+            toast.error(msg);
+            await logMemberLoginDirect(emailVal, 'failed', 'প্রত্যাখ্যাত আবেদন থাকা অবস্থায় গুগল লগইন চেষ্টা।');
+            cleanupRedirectStorage();
+            setAuthProcessing(false);
+            return;
+          }
+
+          if (foundMember.status === 'verified') {
+            authDiagnostics.update({ sessionCreated: true });
+            // Save metadata
+            const updatedDoc = {
+              ...foundMember,
+              googleUid: valReport.uid,
+              googleEmail: valReport.email,
+              googlePhoto: valReport.photoURL || '',
+              lastGoogleLogin: new Date().toISOString().replace('T', ' ').substring(0, 19)
+            };
+            await saveFirestoreDoc('memberships', foundMember.id, updatedDoc);
+
+            await handleLogin(foundMember.email);
+            setCurrentTab('member-portal');
+            toast.success(`স্বাগতম কমরেড ${foundMember.name}! গুগল সাইন-ইন সফল হয়েছে।`);
+            await logMemberLoginDirect(foundMember.email, 'success', `সদস্য "${foundMember.name}" গুগল সাইন-ইন দিয়ে সফলভাবে লগইন করেছেন।`);
+          }
+        }
+
+        else if (action === 'nav_register_verify') {
+          const savedRegInputs = localStorage.getItem('scf_pending_nav_reg_inputs');
+          if (savedRegInputs) {
+            try {
+              const parsed = JSON.parse(savedRegInputs);
+              if (parsed) {
+                const enteredEmailLower = parsed.email.toLowerCase().trim();
+                if (emailVal !== enteredEmailLower) {
+                  const errorMsg = `The selected Google account does not match the email address entered during registration. (নির্বাচনকৃত গুগল অ্যাকাউন্ট "${emailVal}" আপনার ফর্মে দেওয়া ইমেইল "${enteredEmailLower}" এর সাথে হুবহু মেলেনি।)`;
+                  toast.error(errorMsg);
+                  authDiagnostics.update({ 
+                    errorMessage: errorMsg,
+                    technicalError: 'Google account and form email mismatch.'
+                  });
+                  setAuthProcessing(false);
+                  return;
+                }
+
+                // If matches, complete registration!
+                const added = await handleRegisterMember({
+                  name: parsed.name.trim(),
+                  mobile: parsed.mobile.trim(),
+                  email: parsed.email.trim().toLowerCase(),
+                  password: parsed.password.trim(),
+                  institution: parsed.institution.trim(),
+                  department: '',
+                  academicYear: '',
+                  address: 'অনলাইন সাইনআপ ফর্ম',
+                  dob: parsed.dob,
+                  bloodGroup: parsed.bloodGroup,
+                  type: parsed.type,
+                  emailVerified: true,
+                  verifiedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+                  verifiedMethod: 'Google OAuth',
+                  googleUid: valReport.uid,
+                  googleEmail: valReport.email,
+                  googlePhoto: valReport.photoURL || ''
+                });
+
+                if (added) {
+                  const successMsg = `বিপ্লবী শুভেচ্ছা কমরেড ${parsed.name.trim()}! নতুন অ্যাকাউন্ট ও সদস্যপদের আবেদনটি সফলভাবে নিবন্ধিত হয়েছে। জেলা দপ্তর সেল আবেদনটি ভেরিফাই ও অনুমোদন করার পর আপনি সরাসরি এই ইমেইল দিয়ে ডাটাবেজ পোর্টালে লগইন করতে পারবেন।`;
+                  localStorage.setItem('scf_nav_reg_success_msg', successMsg);
+                  localStorage.setItem('scf_show_login_modal_on_load', 'true');
+                  window.location.reload(); // Reload to show success on mount cleanly
+                } else {
+                  toast.error('দুঃখিত, আবেদনপত্রটি ডাটাবেজে সাবমিট করা যায়নি। দয়া করে পুনরায় চেষ্টা করুন।');
+                }
+              }
+            } catch (e) {
+              console.error(e);
+            }
+          }
+        }
+
+        else if (action === 'member_form_autofill') {
+          const autofillData = {
+            name: valReport.displayName || '',
+            email: emailVal,
+            uid: valReport.uid || '',
+            photoURL: valReport.photoURL || '',
+            password: Math.random().toString(36).substring(2, 10)
+          };
+          localStorage.setItem('scf_member_form_autofill_data', JSON.stringify(autofillData));
+          setCurrentTab('join');
+          toast.success('গুগল অ্যাকাউন্ট থেকে আপনার নাম ও ইমেইল সফলভাবে অটো-ফিল করা হয়েছে! অনুগ্রহ করে বাকি প্রয়োজনীয় তথ্যসমূহ দিন।');
+        }
+
+        else if (action === 'member_form_verify') {
+          const savedInputs = localStorage.getItem('scf_pending_form_reg_inputs');
+          if (savedInputs) {
+            try {
+              const parsed = JSON.parse(savedInputs);
+              if (parsed) {
+                const enteredEmailLower = parsed.email.toLowerCase().trim();
+                if (emailVal !== enteredEmailLower) {
+                  const errorMsg = `The selected Google account does not match the email address entered during registration. (নির্বাচনকৃত গুগল অ্যাকাউন্ট "${emailVal}" আপনার ফর্মে দেওয়া ইমেইল "${enteredEmailLower}" এর সাথে হুবহু মেলেনি।)`;
+                  localStorage.setItem('scf_pending_form_verification_error', errorMsg);
+                  window.location.reload();
+                  return;
+                }
+
+                // If matches, complete registration!
+                const added = await handleRegisterMember({
+                  name: parsed.name.trim(),
+                  mobile: parsed.mobile.trim(),
+                  email: parsed.email.trim(),
+                  password: parsed.password.trim(),
+                  institution: parsed.institution.trim(),
+                  department: parsed.department.trim(),
+                  academicYear: parsed.academicYear.trim(),
+                  address: parsed.address.trim(),
+                  dob: parsed.dob,
+                  bloodGroup: parsed.bloodGroup.trim(),
+                  type: parsed.type,
+                  emailVerified: true,
+                  verifiedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+                  verifiedMethod: 'Google OAuth',
+                  googleUid: valReport.uid,
+                  googleEmail: valReport.email,
+                  googlePhoto: valReport.photoURL || ''
+                });
+
+                if (added) {
+                  localStorage.setItem('scf_form_reg_success', 'true');
+                  window.location.reload();
+                } else {
+                  toast.error('দুঃখিত, আবেদনপত্রটি ডাটাবেজে সাবমিট করা যায়নি।');
+                }
+              }
+            } catch (e) {
+              console.error(e);
+            }
+          }
+        }
+
+        cleanupRedirectStorage();
+      } catch (error: any) {
+        console.error('Redirect Processing Error:', error);
+        const errDec = decomposeAuthError(error);
+        toast.error(errDec.message);
+        
+        authDiagnostics.update({
+          redirectResult: 'error',
+          errorMessage: errDec.message,
+          technicalError: errDec.technicalReason,
+          suggestedFix: errDec.suggestedFix
+        });
+      } finally {
+        setAuthProcessing(false);
+      }
+    };
+
+    handleRedirect();
+  }, [db]);
+
+  const cleanupRedirectStorage = () => {
+    localStorage.removeItem('auth_redirect_action');
+    localStorage.removeItem('scf_pending_nav_reg_inputs');
+    localStorage.removeItem('scf_pending_nav_verification');
+    localStorage.removeItem('scf_pending_form_reg_inputs');
+    
+    // Restore scroll position if saved
+    const scrollPos = localStorage.getItem('scf_auth_scroll_pos');
+    if (scrollPos) {
+      setTimeout(() => {
+        window.scrollTo({
+          top: parseInt(scrollPos, 10),
+          behavior: 'smooth'
+        });
+        localStorage.removeItem('scf_auth_scroll_pos');
+      }, 300);
+    }
+  };
+
   const handleVerifyMember = async (id: string, status: 'verified' | 'rejected') => {
     if (!userEmail) return false;
     try {
@@ -1494,6 +2029,26 @@ export default function App() {
     }
   };
 
+  if (isNativeAuth) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6 text-center">
+        <div className="max-w-md w-full bg-slate-800 rounded-2xl shadow-xl p-8 border border-rose-500/20">
+          <div className="w-16 h-16 bg-rose-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-rose-600/30">
+            <Smartphone className="w-8 h-8 text-white animate-bounce" />
+          </div>
+          <h2 className="text-2xl font-bold font-sans text-rose-500 mb-2">গুগল সাইন-ইন হচ্ছে</h2>
+          <p className="text-slate-300 text-sm mb-6 leading-relaxed">
+            সমাজতান্ত্রিক ছাত্র ফ্রন্ট এপ্লিকেশনে নিরাপদে সাইন-ইন করতে ব্রাউজার উইন্ডোটি ব্যবহার করা হচ্ছে। অনুগ্রহ করে অপেক্ষা করুন...
+          </p>
+          <div className="flex items-center justify-center gap-3">
+            <RefreshCw className="w-5 h-5 text-rose-500 animate-spin" />
+            <span className="text-slate-400 text-xs font-mono">Redirecting to Google OAuth...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 flex flex-col transition-colors duration-300">
       
@@ -1528,7 +2083,15 @@ export default function App() {
 
       {/* Main Content frame */}
       <main className="flex-grow">
-        {loading ? (
+        {authProcessing ? (
+          <div className="flex flex-col items-center justify-center py-32 text-sm text-zinc-500 font-sans space-y-4">
+            <RefreshCw className="w-10 h-10 text-emerald-600 animate-spin" />
+            <h3 className="text-base font-bold text-zinc-800 dark:text-zinc-200">গুগল অথেনটিকেশন যাচাই করা হচ্ছে</h3>
+            <p className="text-xs text-zinc-500 max-w-md text-center leading-relaxed">
+              আপনার গুগল সাইন-ইন ডাটা যাচাই করা হচ্ছে এবং ডাটাবেজ সেশন সক্রিয় করা হচ্ছে। অনুগ্রহ করে কয়েক সেকেন্ড অপেক্ষা করুন...
+            </p>
+          </div>
+        ) : loading ? (
           <div className="flex flex-col items-center justify-center py-28 text-sm text-zinc-500 font-sans space-y-3">
             <RefreshCw className="w-8 h-8 text-rose-600 animate-spin" />
             <p>সমাজতান্ত্রিক ছাত্র ফ্রন্ট অনলাইন ডাটাবেজ সংযোগ স্থাপিত হচ্ছে। অনুগ্রহ করে অপেক্ষা করুন...</p>
@@ -1662,6 +2225,13 @@ export default function App() {
           />
         )}
       </AnimatePresence>
+
+      {/* Unsupported Browser Alert Modal */}
+      <UnsupportedBrowserModal
+        isOpen={unsupportedModalOpen}
+        onClose={() => setUnsupportedModalOpen(false)}
+        profile={detectedBrowserProfile}
+      />
 
       {/* Developer Debug Console */}
       <DebugConsole isOpen={showDebugConsole} setIsOpen={setShowDebugConsole} />

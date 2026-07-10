@@ -365,7 +365,7 @@ export default function ContentDetails({
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 font-sans">
       
       {/* BREADCRUMBS ROW */}
-      <nav className="flex items-center space-x-2 text-xs text-zinc-500 dark:text-zinc-400 mb-6 border-b border-zinc-150/50 dark:border-zinc-800/50 pb-3 select-none">
+      <nav className="flex items-center space-x-2 text-xs text-zinc-500 dark:text-zinc-400 mb-6 border-b border-zinc-150/50 dark:border-zinc-800/50 pb-3 select-none no-print">
         <button onClick={onClose} className="hover:text-rose-600 font-bold transition">হোম</button>
         <span>/</span>
         <span className="capitalize">{unified.type === 'news' ? 'বার্তা ও খবর' : unified.type === 'blog' ? 'নিবন্ধ ও কলাম' : unified.type === 'event' ? 'কর্মসূচী ও প্রতিবাদ' : unified.type === 'publication' ? 'প্রকাশনা সেল' : unified.type === 'circular' ? 'সার্কুলার ও নোটিশ' : 'মিডিয়া সেন্টার'}</span>
@@ -374,7 +374,7 @@ export default function ContentDetails({
       </nav>
 
       {/* BACK BUTTON AND UTILS ROW */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 no-print">
         <button
           onClick={onClose}
           className="inline-flex items-center space-x-1.5 text-zinc-650 hover:text-rose-600 transition font-semibold text-xs border border-zinc-200 dark:border-zinc-800 px-3 py-1.5 rounded-sm bg-white dark:bg-zinc-950 shadow-xs cursor-pointer"
@@ -423,7 +423,7 @@ export default function ContentDetails({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         
         {/* LEFT COLUMN: PRIMARY BODY (12 cols -> 8 cols on desktop) */}
-        <div className="lg:col-span-8 bg-white dark:bg-zinc-950 border border-zinc-150 dark:border-zinc-900 rounded p-5 sm:p-9 shadow-xs">
+        <div className="lg:col-span-8 bg-white dark:bg-zinc-950 border border-zinc-150 dark:border-zinc-900 rounded p-5 sm:p-9 shadow-xs printable-article-body">
           
           {/* HEADER BADGE */}
           <div className="flex items-center gap-2.5 mb-4">
@@ -533,7 +533,7 @@ export default function ContentDetails({
                   <p className="text-[10px] text-zinc-500 mt-0.5">সহজে অফলাইনে পড়তে অথবা সংগ্রহে রাখতে ডাউলোড করুন।</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="flex items-center gap-2 w-full sm:w-auto no-print">
                 <a
                   href={unified.pdfUrl}
                   target="_blank"
@@ -586,7 +586,7 @@ export default function ContentDetails({
           )}
 
           {/* COMMENTS MODERATION PANEL & FORM */}
-          <div className="mt-12 border-t border-zinc-150 dark:border-zinc-900 pt-8">
+          <div className="mt-12 border-t border-zinc-150 dark:border-zinc-900 pt-8 no-print">
             <h3 className="text-lg font-bold text-zinc-950 dark:text-white mb-6 flex items-center space-x-2 text-left">
               <MessageCircle className="w-5 h-5 text-rose-600" />
               <span>মন্তব্য এবং প্রতিক্রিয়া ({rawItem.comments ? rawItem.comments.filter((c: any) => c.approved || userEmail).length : 0})</span>
@@ -685,7 +685,7 @@ export default function ContentDetails({
         </div>
 
         {/* RIGHT COLUMN: SECONDARY BRAND & SOCIAL BAR (12 cols -> 4 cols on desktop) */}
-        <div className="lg:col-span-4 space-y-6">
+        <div className="lg:col-span-4 space-y-6 no-print">
           
           {/* SOCIAL SHARING BLOCK */}
           <div className="bg-white dark:bg-zinc-950 border border-zinc-150 dark:border-zinc-900 rounded p-5 shadow-xs text-left">

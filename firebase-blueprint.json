@@ -182,6 +182,17 @@
         "showBreakingNews": { "type": "boolean" },
         "siteMaintenance": { "type": "boolean" }
       }
+    },
+    "AuthExchange": {
+      "title": "AuthExchange",
+      "description": "Secure short-lived token exchange for native platforms",
+      "type": "object",
+      "properties": {
+        "idToken": { "type": "string" },
+        "accessToken": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "used": { "type": "boolean" }
+      }
     }
   },
   "firestore": {
@@ -197,6 +208,7 @@
     "/visits/{id}": { "schema": "Visit", "description": "Aggregated visitor and page pageVisits" },
     "/organizations/{id}": { "schema": "Organization", "description": "Organizational wing details" },
     "/memberLogins/{id}": { "schema": "MemberLogin", "description": "Recorded member account operations logs" },
-    "/invitations/{id}": { "schema": "Invitation", "description": "Assigned administrative moderator credentials" }
+    "/invitations/{id}": { "schema": "Invitation", "description": "Assigned administrative moderator credentials" },
+    "/authExchanges/{id}": { "schema": "AuthExchange", "description": "Short-lived exchange credentials for deep link redirection" }
   }
 }

@@ -3,7 +3,7 @@ import { UserPlus, ShieldAlert, CheckCircle2, Search, UserCheck, RefreshCw, X, A
 import { MemberRegistration } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from './Toast';
-import { signInWithPopup } from 'firebase/auth';
+import { initiateGoogleSignIn } from '../lib/authService';
 import { secondaryAuth, secondaryGoogleProvider } from '../firebase';
 
 interface MembershipFormProps {
@@ -44,29 +44,73 @@ export default function MembershipForm({ onRegisterMember, membersList, setCurre
   const [verifiedMember, setVerifiedMember] = useState<MemberRegistration | null>(null);
   const [searchHasRun, setSearchHasRun] = useState(false);
 
+  // Restore and display pending state on mount after returning from Google OAuth redirect
+  React.useEffect(() => {
+    // 1. Check for success state
+    if (localStorage.getItem('scf_form_reg_success') === 'true') {
+      setAppliedSuccess(true);
+      setIsFormModalOpen(true);
+      localStorage.removeItem('scf_form_reg_success');
+    }
+
+    // 2. Check for autofill data
+    const savedAutofill = localStorage.getItem('scf_member_form_autofill_data');
+    if (savedAutofill) {
+      try {
+        const parsed = JSON.parse(savedAutofill);
+        if (parsed) {
+          setName(parsed.name || '');
+          setEmail(parsed.email || '');
+          setPassword(parsed.password || '');
+          setGoogleAutofilled(true);
+          setIsFormModalOpen(true);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+      localStorage.removeItem('scf_member_form_autofill_data');
+    }
+
+    // 3. Check for pending inputs
+    const savedInputs = localStorage.getItem('scf_pending_form_reg_inputs');
+    if (savedInputs) {
+      try {
+        const parsed = JSON.parse(savedInputs);
+        if (parsed) {
+          setName(parsed.name || '');
+          setMobile(parsed.mobile || '');
+          setEmail(parsed.email || '');
+          setPassword(parsed.password || '');
+          setInstitution(parsed.institution || '');
+          setDepartment(parsed.department || '');
+          setAcademicYear(parsed.academicYear || '');
+          setAddress(parsed.address || '');
+          setDob(parsed.dob || '');
+          setBloodGroup(parsed.bloodGroup || '');
+          setType(parsed.type || 'member');
+          
+          setIsFormModalOpen(true);
+          setVerificationPending(true);
+          
+          const pendingError = localStorage.getItem('scf_pending_form_verification_error');
+          if (pendingError) {
+            setVerificationError(pendingError);
+            localStorage.removeItem('scf_pending_form_verification_error');
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, []);
+
   const handleGoogleAutofill = async () => {
     try {
       setSubmitting(true);
-      const result = await signInWithPopup(secondaryAuth, secondaryGoogleProvider);
-      const user = result.user;
-      if (user) {
-        if (user.displayName) {
-          setName(user.displayName);
-        }
-        if (user.email) {
-          setEmail(user.email);
-        }
-        // Generate automatic temporary secure password if none exists
-        if (!password) {
-          setPassword(Math.random().toString(36).substring(2, 10));
-        }
-        setGoogleAutofilled(true);
-        toast.success('গুগল অ্যাকাউন্ট থেকে আপনার নাম ও ইমেইল সফলভাবে অটো-ফিল করা হয়েছে! অনুগ্রহ করে বাকি প্রয়োজনীয় তথ্যসমূহ দিন।');
-      }
+      await initiateGoogleSignIn({ actionType: 'member_form_autofill' });
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || 'গুগল অটো-ফিল করার সময় কোনো ত্রুটি ঘটেছে।');
-    } finally {
       setSubmitting(false);
     }
   };
@@ -76,69 +120,27 @@ export default function MembershipForm({ onRegisterMember, membersList, setCurre
       setSubmitting(true);
       setVerificationError('');
       
-      const result = await signInWithPopup(secondaryAuth, secondaryGoogleProvider);
-      const user = result.user;
-      if (!user || !user.email) {
-        throw new Error('গুগল অ্যাকাউন্ট থেকে ইমেইল এড্রেস পাওয়া যায়নি।');
-      }
-
-      const googleEmailLower = user.email.toLowerCase().trim();
-      const enteredEmailLower = email.toLowerCase().trim();
-
-      if (googleEmailLower !== enteredEmailLower) {
-        setVerificationError(`The selected Google account does not match the email address entered during registration. (নির্বাচনকৃত গুগল অ্যাকাউন্ট "${user.email}" আপনার ফর্মে দেওয়া ইমেইল "${email}" এর সাথে হুবহু মেলেনি।)`);
-        setSubmitting(false);
-        return;
-      }
-
-      // If it matches, complete registration!
-      const added = await onRegisterMember({
-        name: name.trim(),
-        mobile: mobile.trim(),
-        email: email.trim(),
-        password: password.trim(),
-        institution: institution.trim(),
-        department: department.trim(),
-        academicYear: academicYear.trim(),
-        address: address.trim(),
+      const inputs = {
+        name,
+        mobile,
+        email,
+        password,
+        institution,
+        department,
+        academicYear,
+        address,
         dob,
-        bloodGroup: bloodGroup.trim(),
-        type,
-        // New security verification fields
-        emailVerified: true,
-        verifiedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
-        verifiedMethod: 'Google OAuth',
-        googleUid: user.uid,
-        googleEmail: user.email,
-        googlePhoto: user.photoURL || ''
+        bloodGroup,
+        type
+      };
+      
+      await initiateGoogleSignIn({
+        actionType: 'member_form_verify',
+        pendingInputs: inputs
       });
-
-      setSubmitting(false);
-
-      if (added) {
-        setAppliedSuccess(true);
-        // Clean states
-        setName('');
-        setMobile('');
-        setEmail('');
-        setPassword('');
-        setInstitution('');
-        setDepartment('');
-        setAcademicYear('');
-        setAddress('');
-        setDob('');
-        setBloodGroup('');
-        setGoogleAutofilled(false);
-        setVerificationPending(false);
-        setVerificationError('');
-      } else {
-        setVerificationError('দুঃখিত, আবেদনপত্রটি ডাটাবেজে সাবমিট করা যায়নি। দয়া করে পুনরায় চেষ্টা করুন।');
-      }
     } catch (err: any) {
       console.error(err);
-      if (err.code !== 'auth/popup-closed-by-user') {
-        setVerificationError(err.message || 'গুগল ভেরিফিকেশন করার সময় কোনো ত্রুটি ঘটেছে।');
-      }
+      setVerificationError(err.message || 'গুগল ভেরিফিকেশন করার সময় কোনো ত্রুটি ঘটেছে।');
       setSubmitting(false);
     }
   };
