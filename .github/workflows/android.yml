@@ -38,6 +38,7 @@ jobs:
     - name: Synchronize Capacitor Project
       run: npx cap sync android
 
+    - name: Validate and Repair Gradle Wrapper
       run: |
         if ! jar tf android/gradle/wrapper/gradle-wrapper.jar > /dev/null 2>&1; then
           echo "WARNING: Gradle wrapper JAR is invalid, missing or corrupted! Downloading fresh official Gradle 8.14.3 wrapper..."
@@ -47,7 +48,6 @@ jobs:
           echo "SUCCESS: Gradle wrapper JAR is valid."
         fi
 
-    - name: Validate and Repair PNG Assets
       run: |
         python3 -c "
         import os, glob, struct, zlib
@@ -198,4 +198,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: app-release-aab
-        path: android/app/build/outputs/bundle/release/*.aab
+        path: android/app/build/outputs/bundle/release/*.Assets
