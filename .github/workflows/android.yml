@@ -38,6 +38,16 @@ jobs:
     - name: Synchronize Capacitor Project
       run: npx cap sync android
 
+    - name: Validate and Repair Gradle Wrapper
+      run: |
+        if ! jar tf android/gradle/wrapper/gradle-wrapper.jar > /dev/null 2>&1; then
+          echo "WARNING: Gradle wrapper JAR is invalid, missing or corrupted! Downloading fresh official Gradle 8.14.3 wrapper..."
+          mkdir -p android/gradle/wrapper
+          curl -sSL https://raw.githubusercontent.com/gradle/gradle/v8.14.3/gradle/wrapper/gradle-wrapper.jar -o android/gradle/wrapper/gradle-wrapper.jar
+        else
+          echo "SUCCESS: Gradle wrapper JAR is valid."
+        fi
+
     - name: Make Gradle Wrapper Executable
       run: chmod +x android/gradlew
       working-directory: .
