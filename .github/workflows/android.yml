@@ -2,9 +2,15 @@ name: Build Android App
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches:
+      - main
+      - master
+
   pull_request:
-    branches: [ "main", "master" ]
+    branches:
+      - main
+      - master
+
   workflow_dispatch:
 
 jobs:
@@ -13,61 +19,92 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Source Code
-      uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: 20
-        cache: 'npm'
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
 
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: '17'
-        cache: 'gradle'
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
 
-    - name: Install Dependencies
-      run: npm ci
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-    - name: Build Web Application
-      run: npm run build
+      - name: Cache Gradle Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
 
-    - name: Synchronize Capacitor Project
-      run: npx cap sync android
+      - name: Install Node Dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
 
-    - name: Make Gradle Wrapper Executable
-      run: chmod +x android/gradlew
-      working-directory: .
+      - name: Build React Application
+        run: npm run build
 
-    - name: Build Android Debug APK
-      run: ./gradlew assembleDebug
-      working-directory: android
+      - name: Sync Capacitor Android
+        run: npx cap sync android
 
-    - name: Build Android Release APK
-      run: ./gradlew assembleRelease
-      working-directory: android
+      - name: Make Gradle Executable
+        run: chmod +x gradlew
+        working-directory: android
 
-    - name: Build Android Release AAB
-      run: ./gradlew bundleRelease
-      working-directory: android
+      - name: Build Debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --stacktrace
 
-    - name: Upload Debug APK Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: app-debug-apk
-        path: android/app/build/outputs/apk/debug/*.apk
+      - name: Build Release APK
+        working-directory: android
+        run: ./gradlew assembleRelease --stacktrace
 
-    - name: Upload Release APK Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: app-release-apk
-        path: android/app/build/outputs/apk/release/*.apk
+      - name: Build Release AAB
+        working-directory: android
+        run: ./gradlew bundleRelease --stacktrace
 
-    - name: Upload Release AAB Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: app-release-aab
-        path: android/app/build/outputs/bundle/release/*.aab
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+      - name: Upload Release AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-aab
+          path: android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+
+      - name: Upload Build Logs (Always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-build-logs
+          path: |
+            android/**/*.log
+            android/**/reports/**
+          if-no-files-found: ignore
