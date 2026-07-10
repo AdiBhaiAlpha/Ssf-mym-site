@@ -37,8 +37,8 @@ jobs:
       run: npx vite build
 
     - name: Synchronize Capacitor Project
-      # ক্যাপাসিটর সিঙ্কের সময় যাতে কোনো প্রম্পট এসে পাইপলাইন আটকে না দেয়, সেজন্য --no-prompts ব্যবহার করা হয়েছে
-      run: npx cap sync android --no-prompts
+      run: npx cap sync android
+
 
     - name: Validate and Repair Gradle Wrapper
       run: |
