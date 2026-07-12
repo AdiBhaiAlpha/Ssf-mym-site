@@ -263,6 +263,19 @@ export default function App() {
     };
   }, [db]);
 
+  // Initialize native Google Auth plugin (required on Android/iOS to avoid
+  // Error 403: disallowed_useragent, since it opens a secure system browser
+  // flow instead of an embedded WebView)
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      GoogleAuth.initialize({
+        clientId: "953122849300-ia6mch7purs0l6rdsftpi5qcuukdndlm.apps.googleusercontent.com",
+        scopes: ["profile", "email"],
+        grantOfflineAccess: true,
+      });
+    }
+  }, []);
+
   // Listen for unsupported browser sign-in events
   useEffect(() => {
     const handleUnsupportedBrowser = (event: Event) => {
