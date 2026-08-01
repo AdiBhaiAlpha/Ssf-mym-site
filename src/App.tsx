@@ -1353,60 +1353,20 @@ export default function App() {
     
     const handleRedirect = async () => {
       try {
-        const urlParams = new URLSearchParams(window.location.search);
-        const isNativeAuthFlow = urlParams.get('nativeAuth') === 'true';
-        const nativeAuthAction = urlParams.get('action') || 'portal_login';
-
-        if (isNativeAuthFlow) {
-          setAuthProcessing(true);
-          const result = await getRedirectResult(secondaryAuth);
-          if (result && result.user) {
-            const credential = GoogleAuthProvider.credentialFromResult(result);
-            const idToken = credential?.idToken;
-            const accessToken = credential?.accessToken;
-            if (idToken) {
-              // Generate secure exchange code
-              const array = new Uint8Array(16);
-              window.crypto.getRandomValues(array);
-              const exchangeCode = Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
-
-              // Save the exchange credentials securely in Firestore
-              await saveFirestoreDoc('authExchanges', exchangeCode, {
-                idToken,
-                accessToken: accessToken || '',
-                createdAt: new Date().toISOString(),
-                used: false
-              });
-
-              // Construct secure deepLinkUrl passing ONLY the exchange code
-              const deepLinkUrl = `ssfmym://auth-callback?code=${exchangeCode}&action=${nativeAuthAction}`;
-              window.location.href = deepLinkUrl;
-              return;
-            }
-          } else {
-            if (secondaryAuth.currentUser) {
-              await secondaryAuth.signOut();
-            }
-            localStorage.setItem('auth_redirect_action', nativeAuthAction);
-            await signInWithRedirect(secondaryAuth, secondaryGoogleProvider);
-            return;
-          }
-          return;
-        }
-
         const action = localStorage.getItem('auth_redirect_action');
         if (!action) return;
 
-        setAuthProcessing(true);
         authDiagnostics.update({ redirectReturned: true });
         
         const result = await getRedirectResult(secondaryAuth);
         if (!result || !result.user) {
           authDiagnostics.update({ redirectResult: 'none' });
+          localStorage.removeItem('auth_redirect_action');
           setAuthProcessing(false);
           return;
         }
 
+        setAuthProcessing(true);
         authDiagnostics.update({ redirectResult: 'success', userRetrieved: result.user.email });
 
         // Validate user using our secure pipeline

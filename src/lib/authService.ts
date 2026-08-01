@@ -432,11 +432,23 @@ export async function initiateGoogleSignIn(options: AuthInitiationOptions): Prom
     }
   } catch (err: any) {
     console.error('Web Google Popup Auth error:', err);
+    const decomp = decomposeAuthError(err);
     const errStr = String(err?.message || err).toLowerCase();
+
     if (errStr.includes('cancel') || errStr.includes('closed') || errStr.includes('popup-closed-by-user')) {
       throw new Error('গুগল সাইন-ইন উইন্ডো বন্ধ করা হয়েছে।');
     }
-    throw new Error(err?.message || 'গুগল দিয়ে লগইন সফল হয়নি।');
+
+    if (decomp.code.includes('disallowed_useragent') || errStr.includes('disallowed_useragent') || errStr.includes('400') || errStr.includes('malformed')) {
+      if (typeof window !== 'undefined') {
+        const profile = BrowserDetection.detect();
+        const event = new CustomEvent('unsupported-browser-sign-in', { detail: profile });
+        window.dispatchEvent(event);
+      }
+      throw new Error(decomp.message);
+    }
+
+    throw new Error(err?.message || decomp.message);
   }
 }
 

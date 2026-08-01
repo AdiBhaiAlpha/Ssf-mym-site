@@ -7,12 +7,7 @@ const config: CapacitorConfig = {
   server: {
     url: 'https://ssfmym.pro.bd',
     allowNavigation: [
-      'ssfmym.pro.bd',
-      'accounts.google.com',
-      '*.google.com',
-      '*.firebaseapp.com',
-      '*.firebasestorage.app',
-      'western-correlate-nkm1r.firebaseapp.com'
+      'ssfmym.pro.bd'
     ]
   },
   plugins: {

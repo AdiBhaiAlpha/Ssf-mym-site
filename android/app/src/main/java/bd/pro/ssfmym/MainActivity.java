@@ -261,12 +261,14 @@ public class MainActivity extends BridgeActivity {
                 }
             }
 
+            // Block web OAuth navigation attempts - native GoogleAuth plugin handles authentication via Google Play Services
+            if (url.contains("accounts.google.com") || url.contains("google.com/signin") || url.contains("firebaseapp.com/__/auth/")) {
+                return true;
+            }
+
             // Route external links out of the application to avoid hijacking user session
             if (!url.contains("ssfmym.pro.bd") && 
-                !url.contains("localhost") && 
-                !url.contains("firebaseapp.com") && 
-                !url.contains("accounts.google.com") &&
-                !url.contains("googleapis.com")) {
+                !url.contains("localhost")) {
                 try {
                     Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                     view.getContext().startActivity(intent);
