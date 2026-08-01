@@ -67,7 +67,7 @@ def copy_android_assets():
     <item>
         <bitmap
             android:src="@drawable/splash_img"
-            android:gravity="center" />
+            android:gravity="fill_horizontal|center_vertical" />
     </item>
 </layer-list>
 '''

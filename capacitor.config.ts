@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'bd.pro.ssfmym',
+  appId: 'app.ssf.mym',
   appName: 'সমাজতান্ত্রিক ছাত্র ফ্রন্ট',
   webDir: 'dist',
   server: {
@@ -16,16 +16,11 @@ const config: CapacitorConfig = {
       launchAutoHide: true,
       launchFadeOutDuration: 300,
       backgroundColor: '#18181b',
-      androidSplashResourceName: 'splash',
-      androidScaleType: 'CENTER_INSIDE',
+      androidSplashResourceName: 'splash_img',
+      androidScaleType: 'FIT_CENTER',
       showSpinner: false,
       splashFullScreen: true,
       splashImmersive: true
-    },
-    GoogleAuth: {
-      scopes: ['profile', 'email'],
-      serverClientId: '953122849300-88n085h13a52862d53g58f.apps.googleusercontent.com',
-      forceCodeForRefreshToken: true
     }
   },
   android: {

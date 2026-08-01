@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Menu, X, Sun, Moon, LogIn, LogOut, ShieldAlert, Award, FileText, Newspaper, BookOpen, Calendar, HelpCircle, Mail, Search, Bell, Terminal } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { saveFirestoreDoc, secondaryAuth, secondaryGoogleProvider } from '../firebase';
+import { saveFirestoreDoc, secondaryAuth } from '../firebase';
 import { initiateGoogleSignIn } from '../lib/authService';
 import { useToast } from './Toast';
 

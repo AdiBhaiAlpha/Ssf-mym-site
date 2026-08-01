@@ -4,7 +4,7 @@ import { MemberRegistration } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from './Toast';
 import { initiateGoogleSignIn } from '../lib/authService';
-import { secondaryAuth, secondaryGoogleProvider } from '../firebase';
+import { secondaryAuth } from '../firebase';
 
 interface MembershipFormProps {
   onRegisterMember: (registration: Omit<MemberRegistration, 'id' | 'status' | 'appliedAt'>) => Promise<MemberRegistration | null>;

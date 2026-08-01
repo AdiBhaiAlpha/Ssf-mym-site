@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Mail, Key, ShieldCheck, ShieldAlert, Sparkles, RefreshCw, Undo2, Lock } from 'lucide-react';
 import { MemberRegistration } from '../types';
-import { saveFirestoreDoc, secondaryAuth, secondaryGoogleProvider } from '../firebase';
+import { saveFirestoreDoc, secondaryAuth } from '../firebase';
 import { initiateGoogleSignIn } from '../lib/authService';
 
 interface PortalAuthProps {

@@ -1,17 +1,16 @@
 import { 
   User, 
-  signInWithRedirect, 
-  signInWithPopup, 
-  getRedirectResult, 
   AuthProvider,
   Auth,
   GoogleAuthProvider,
   signInWithCredential
 } from 'firebase/auth';
-import { secondaryAuth, secondaryGoogleProvider, saveFirestoreDoc } from '../firebase';
+import { secondaryAuth, saveFirestoreDoc } from '../firebase';
 import { BrowserDetection, BrowserProfile } from './BrowserDetection';
-import { Capacitor } from '@capacitor/core';
-import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
+import { Capacitor, registerPlugin } from '@capacitor/core';
+
+// Register local plugin
+const NativeGoogleAuth = registerPlugin('NativeGoogleAuth');
 
 // ==========================================
 // ENVIRONMENT DETECTION TYPE & FUNCTION
@@ -117,6 +116,10 @@ export function decomposeAuthError(error: any): AuthErrorDecomposition {
     message = 'লগইন প্রসেসটি সম্পন্ন হতে অতিরিক্ত সময় লাগার কারণে কানেকশন টাইমআউট হয়েছে।';
     technicalReason = 'auth/timeout. The authentication operation timed out while waiting for a response.';
     suggestedFix = 'আপনার নেটওয়ার্ক স্পিড চেক করে পুনরায় চেষ্টা করুন।';
+  } else if (code.includes('cancelled-popup-request') || originalMessage.includes('cancelled-popup-request')) {
+    message = 'গুগল সাইন-ইন প্রক্রিয়াটি বাতিল করা হয়েছে। দয়া করে পুনরায় চেষ্টা করুন।';
+    technicalReason = 'auth/cancelled-popup-request. The popup operation was cancelled by another conflicting request.';
+    suggestedFix = 'আবার সাইন-ইন বাটনে ক্লিক করুন।';
   } else if (code === 'auth/redirect-cancelled-by-user') {
     message = 'গুগল রিডাইরেক্ট প্রসেসটি বাতিল হয়ে গিয়েছে।';
     technicalReason = 'auth/redirect-cancelled-by-user. The user navigated away or cancelled the redirect flow before completion.';
@@ -328,7 +331,6 @@ export async function initiateGoogleSignIn(options: AuthInitiationOptions): Prom
     authDiagnostics.reset();
 
     if (typeof window !== 'undefined') {
-      localStorage.setItem('auth_redirect_action', options.actionType);
       localStorage.setItem('scf_auth_scroll_pos', window.scrollY.toString());
       
       if (options.pendingInputs) {
@@ -349,14 +351,11 @@ export async function initiateGoogleSignIn(options: AuthInitiationOptions): Prom
 
       try {
         // Native Android Google Sign-In with Google Play Services / Credential Manager
-        await GoogleAuth.initialize({
-          clientId: '953122849300-88n085h13a52862d53g58f.apps.googleusercontent.com',
-          scopes: ['profile', 'email'],
-          grantOfflineAccess: true,
+        const googleUser: any = await NativeGoogleAuth.signIn({
+          clientId: '953122849300-88n085h13a52862d53g58f.apps.googleusercontent.com'
         });
 
-        const googleUser: any = await GoogleAuth.signIn();
-        const idToken = googleUser?.authentication?.idToken || googleUser?.idToken;
+        const idToken = googleUser?.idToken;
 
         if (!idToken) {
           throw new Error('গুগল অ্যাকাউন্ট থেকে আইডেন্টিটি টোকেন (ID Token) উদ্ধার করা সম্ভব হয়নি।');
@@ -385,8 +384,8 @@ export async function initiateGoogleSignIn(options: AuthInitiationOptions): Prom
               user: firebaseUser, 
               email: emailVal,
               actionType: options.actionType,
-              displayName: firebaseUser.displayName || googleUser?.name || '',
-              photoURL: firebaseUser.photoURL || googleUser?.imageUrl || ''
+              displayName: firebaseUser.displayName || googleUser?.displayName || '',
+              photoURL: firebaseUser.photoURL || googleUser?.profilePictureUri || ''
             } 
           });
           window.dispatchEvent(event);
@@ -396,7 +395,7 @@ export async function initiateGoogleSignIn(options: AuthInitiationOptions): Prom
         console.error('Native Google Sign-In failed:', err);
         const errStr = String(err?.message || err).toLowerCase();
         
-        const isCancelled = errStr.includes('cancel') || errStr.includes('closed') || errStr.includes('12501') || errStr.includes('popup_closed_by_user') || errStr.includes('cancelled-popup-request');
+        const isCancelled = errStr.includes('cancel') || errStr.includes('closed') || errStr.includes('12501') || errStr.includes('popup_closed_by_user') || errStr.includes('cancelled-popup-request') || errStr.includes('credential_cancelled');
         if (isCancelled) {
           throw new Error('গুগল সাইন-ইন প্রক্রিয়াটি বাতিল করা হয়েছে।');
         }
@@ -415,55 +414,8 @@ export async function initiateGoogleSignIn(options: AuthInitiationOptions): Prom
 
         throw new Error(userFriendlyMessage);
       }
-    }
-
-    authDiagnostics.update({
-      chosenMethod: 'Popup',
-      redirectStarted: false
-    });
-
-    try {
-      const result = await signInWithPopup(secondaryAuth, secondaryGoogleProvider);
-      const firebaseUser = result.user;
-      const emailVal = firebaseUser.email?.toLowerCase().trim() || '';
-
-      if (typeof window !== 'undefined') {
-        const event = new CustomEvent('native-google-auth-success', { 
-          detail: { 
-            user: firebaseUser, 
-            email: emailVal,
-            actionType: options.actionType,
-            displayName: firebaseUser.displayName || '',
-            photoURL: firebaseUser.photoURL || ''
-          } 
-        });
-        window.dispatchEvent(event);
-      }
-    } catch (err: any) {
-      console.error('Web Google Popup Auth error:', err);
-      const decomp = decomposeAuthError(err);
-      const errStr = String(err?.message || err).toLowerCase();
-      const errCode = String(err?.code || '').toLowerCase();
-
-      if (errCode.includes('cancelled-popup-request') || errStr.includes('cancelled-popup-request')) {
-        console.warn('Firebase popup request was cancelled due to another active request.');
-        return;
-      }
-
-      if (errCode.includes('popup-closed-by-user') || errStr.includes('cancel') || errStr.includes('closed') || errStr.includes('popup-closed-by-user')) {
-        throw new Error('গুগল সাইন-ইন উইন্ডো বন্ধ করা হয়েছে।');
-      }
-
-      if (decomp.code.includes('disallowed_useragent') || errStr.includes('disallowed_useragent') || errStr.includes('400') || errStr.includes('malformed')) {
-        if (typeof window !== 'undefined') {
-          const profile = BrowserDetection.detect();
-          const event = new CustomEvent('unsupported-browser-sign-in', { detail: profile });
-          window.dispatchEvent(event);
-        }
-        throw new Error(decomp.message);
-      }
-
-      throw new Error(err?.message || decomp.message);
+    } else {
+        throw new Error('Google Sign-In is only supported natively via Android Credential Manager in this application version.');
     }
   } finally {
     isGoogleAuthActive = false;

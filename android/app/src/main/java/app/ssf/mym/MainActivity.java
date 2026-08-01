@@ -1,4 +1,4 @@
-package bd.pro.ssfmym;
+package app.ssf.mym;
 
 import android.app.DownloadManager;
 import android.content.Intent;
@@ -106,6 +106,8 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
+        registerPlugin(NativeGoogleAuthPlugin.class);
 
         // 1. Style status bar with crimson red theme to match Socialist Students Front branding
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {

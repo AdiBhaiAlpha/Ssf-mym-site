@@ -1,25 +1,21 @@
 {
-	"appId": "bd.pro.ssfmym",
+	"appId": "app.ssf.mym",
 	"appName": "সমাজতান্ত্রিক ছাত্র ফ্রন্ট",
 	"webDir": "dist",
 	"server": {
 		"url": "https://ssfmym.pro.bd",
 		"allowNavigation": [
-			"ssfmym.pro.bd",
-			"accounts.google.com",
-			"*.google.com",
-			"*.firebaseapp.com",
-			"*.firebasestorage.app",
-			"western-correlate-nkm1r.firebaseapp.com"
+			"ssfmym.pro.bd"
 		]
 	},
 	"plugins": {
 		"SplashScreen": {
 			"launchShowDuration": 2000,
 			"launchAutoHide": true,
-			"backgroundColor": "#be123c",
-			"androidSplashResourceName": "splash",
-			"androidScaleType": "CENTER_CROP",
+			"launchFadeOutDuration": 300,
+			"backgroundColor": "#18181b",
+			"androidSplashResourceName": "splash_img",
+			"androidScaleType": "FIT_CENTER",
 			"showSpinner": false,
 			"splashFullScreen": true,
 			"splashImmersive": true

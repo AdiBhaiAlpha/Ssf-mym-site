@@ -22,8 +22,6 @@ const secondaryFirebaseConfig = {
 
 export const secondaryApp = initializeApp(secondaryFirebaseConfig, "secondary");
 export const secondaryAuth = getAuth(secondaryApp);
-export const secondaryGoogleProvider = new GoogleAuthProvider();
-secondaryGoogleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export enum OperationType {
   CREATE = 'create',

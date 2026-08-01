@@ -55,6 +55,17 @@ jobs:
       run: chmod +x android/gradlew
       working-directory: .
 
+    - name: Generate and Display SHA-1 Footprint
+      run: |
+        echo "## 🔐 Android Certificate Fingerprints" >> $GITHUB_STEP_SUMMARY
+        echo "Generating SHA-1 via Gradle signingReport..."
+        ./gradlew signingReport | grep -E "SHA1|Variant" > signing_report.txt
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        cat signing_report.txt >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        cat signing_report.txt
+      working-directory: android
+
     - name: Build Android Debug APK
       run: ./gradlew assembleDebug
       working-directory: android

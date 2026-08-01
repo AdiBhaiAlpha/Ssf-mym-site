@@ -18,8 +18,7 @@ import AdminDashboard from './components/AdminDashboard';
 import CardVerificationModal from './components/CardVerificationModal';
 import { AppDatabase } from './server/db-initial';
 import { Volume2, RefreshCw, Smartphone, Monitor, ChevronRight } from 'lucide-react';
-import { fetchFirestoreDatabase, saveFirestoreDoc, deleteFirestoreDoc, resetFirestoreDatabase, secondaryAuth, secondaryGoogleProvider, db as firestoreDb } from './firebase';
-import { getRedirectResult, signInWithCredential, GoogleAuthProvider, signInWithRedirect } from 'firebase/auth';
+import { fetchFirestoreDatabase, saveFirestoreDoc, deleteFirestoreDoc, resetFirestoreDatabase, secondaryAuth, db as firestoreDb } from './firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { Capacitor } from '@capacitor/core';
 import { authDiagnostics, validateFirebaseUser, decomposeAuthError, logMemberLoginDirect } from './lib/authService';
@@ -1592,6 +1591,15 @@ export default function App() {
         cleanupRedirectStorage();
       } catch (error: any) {
         console.error('Redirect Processing Error:', error);
+        const errStr = String(error?.message || error).toLowerCase();
+        const errCode = String(error?.code || '').toLowerCase();
+
+        if (errCode.includes('cancelled-popup-request') || errStr.includes('cancelled-popup-request') || errCode.includes('popup-closed-by-user') || errStr.includes('popup_closed_by_user')) {
+          console.warn('Ignored popup cancellation or conflict during redirect processing.');
+          cleanupRedirectStorage();
+          return;
+        }
+
         const errDec = decomposeAuthError(error);
         toast.error(errDec.message);
         
