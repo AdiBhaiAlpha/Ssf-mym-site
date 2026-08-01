@@ -315,60 +315,117 @@ export interface AuthInitiationOptions {
   pendingInputs?: any;
 }
 
-export async function initiateGoogleSignIn(options: AuthInitiationOptions): Promise<void> {
-  authDiagnostics.reset();
+let isGoogleAuthActive = false;
 
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('auth_redirect_action', options.actionType);
-    localStorage.setItem('scf_auth_scroll_pos', window.scrollY.toString());
-    
-    if (options.pendingInputs) {
-      if (options.actionType === 'nav_register_verify') {
-        localStorage.setItem('scf_pending_nav_reg_inputs', JSON.stringify(options.pendingInputs));
-        localStorage.setItem('scf_pending_nav_verification', 'true');
-      } else if (options.actionType === 'member_form_verify') {
-        localStorage.setItem('scf_pending_form_reg_inputs', JSON.stringify(options.pendingInputs));
+export async function initiateGoogleSignIn(options: AuthInitiationOptions): Promise<void> {
+  if (isGoogleAuthActive) {
+    console.warn('Google Auth is already in progress. Ignoring duplicate trigger.');
+    return;
+  }
+  isGoogleAuthActive = true;
+
+  try {
+    authDiagnostics.reset();
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('auth_redirect_action', options.actionType);
+      localStorage.setItem('scf_auth_scroll_pos', window.scrollY.toString());
+      
+      if (options.pendingInputs) {
+        if (options.actionType === 'nav_register_verify') {
+          localStorage.setItem('scf_pending_nav_reg_inputs', JSON.stringify(options.pendingInputs));
+          localStorage.setItem('scf_pending_nav_verification', 'true');
+        } else if (options.actionType === 'member_form_verify') {
+          localStorage.setItem('scf_pending_form_reg_inputs', JSON.stringify(options.pendingInputs));
+        }
       }
     }
-  }
 
-  if (Capacitor.isNativePlatform()) {
+    if (Capacitor.isNativePlatform()) {
+      authDiagnostics.update({
+        chosenMethod: 'Popup',
+        redirectStarted: false
+      });
+
+      try {
+        // Native Android Google Sign-In with Google Play Services / Credential Manager
+        await GoogleAuth.initialize({
+          clientId: '953122849300-88n085h13a52862d53g58f.apps.googleusercontent.com',
+          scopes: ['profile', 'email'],
+          grantOfflineAccess: true,
+        });
+
+        const googleUser: any = await GoogleAuth.signIn();
+        const idToken = googleUser?.authentication?.idToken || googleUser?.idToken;
+
+        if (!idToken) {
+          throw new Error('গুগল অ্যাকাউন্ট থেকে আইডেন্টিটি টোকেন (ID Token) উদ্ধার করা সম্ভব হয়নি।');
+        }
+
+        // Exchange ID token for Firebase auth credential
+        const credential = GoogleAuthProvider.credential(idToken);
+        const userCredential = await signInWithCredential(secondaryAuth, credential);
+        const firebaseUser = userCredential.user;
+
+        if (!firebaseUser || !firebaseUser.email) {
+          throw new Error('ফায়ারবেস অথেন্টিকেশন সম্পন্ন করা যায়নি।');
+        }
+
+        const emailVal = firebaseUser.email.toLowerCase().trim();
+
+        authDiagnostics.update({
+          userRetrieved: emailVal,
+          tokenVerified: true,
+          sessionCreated: true
+        });
+
+        if (typeof window !== 'undefined') {
+          const event = new CustomEvent('native-google-auth-success', { 
+            detail: { 
+              user: firebaseUser, 
+              email: emailVal,
+              actionType: options.actionType,
+              displayName: firebaseUser.displayName || googleUser?.name || '',
+              photoURL: firebaseUser.photoURL || googleUser?.imageUrl || ''
+            } 
+          });
+          window.dispatchEvent(event);
+        }
+        return;
+      } catch (err: any) {
+        console.error('Native Google Sign-In failed:', err);
+        const errStr = String(err?.message || err).toLowerCase();
+        
+        const isCancelled = errStr.includes('cancel') || errStr.includes('closed') || errStr.includes('12501') || errStr.includes('popup_closed_by_user') || errStr.includes('cancelled-popup-request');
+        if (isCancelled) {
+          throw new Error('গুগল সাইন-ইন প্রক্রিয়াটি বাতিল করা হয়েছে।');
+        }
+
+        const isPlayServicesIssue = errStr.includes('service_missing') || errStr.includes('service_disabled') || errStr.includes('google play services');
+        
+        const userFriendlyMessage = isPlayServicesIssue
+          ? 'আপনার ডিভাইসে Google Play Services অনুপস্থিত বা সক্রিয় নয়। দয়া করে ডিভাইসের Google Play Services আপডেট অথবা সক্রিয় করে পুনরায় চেষ্টা করুন।'
+          : (err?.message || 'নেটিভ গুগল সাইন-ইন সম্পন্ন করা যায়নি।');
+
+        authDiagnostics.update({
+          errorMessage: userFriendlyMessage,
+          technicalError: err?.message || String(err),
+          suggestedFix: 'Google Cloud Console-এ Package Name (bd.pro.ssfmym), SHA-1 Fingerprint এবং OAuth Client ID সঠিকভাবে কনফিগার করা আছে কিনা চেক করুন।'
+        });
+
+        throw new Error(userFriendlyMessage);
+      }
+    }
+
     authDiagnostics.update({
       chosenMethod: 'Popup',
       redirectStarted: false
     });
 
     try {
-      // Native Android Google Sign-In with Google Play Services / Credential Manager
-      await GoogleAuth.initialize({
-        clientId: '953122849300-88n085h13a52862d53g58f.apps.googleusercontent.com',
-        scopes: ['profile', 'email'],
-        grantOfflineAccess: true,
-      });
-
-      const googleUser: any = await GoogleAuth.signIn();
-      const idToken = googleUser?.authentication?.idToken || googleUser?.idToken;
-
-      if (!idToken) {
-        throw new Error('গুগল অ্যাকাউন্ট থেকে আইডেন্টিটি টোকেন (ID Token) উদ্ধার করা সম্ভব হয়নি।');
-      }
-
-      // Exchange ID token for Firebase auth credential
-      const credential = GoogleAuthProvider.credential(idToken);
-      const userCredential = await signInWithCredential(secondaryAuth, credential);
-      const firebaseUser = userCredential.user;
-
-      if (!firebaseUser || !firebaseUser.email) {
-        throw new Error('ফায়ারবেস অথেন্টিকেশন সম্পন্ন করা যায়নি।');
-      }
-
-      const emailVal = firebaseUser.email.toLowerCase().trim();
-
-      authDiagnostics.update({
-        userRetrieved: emailVal,
-        tokenVerified: true,
-        sessionCreated: true
-      });
+      const result = await signInWithPopup(secondaryAuth, secondaryGoogleProvider);
+      const firebaseUser = result.user;
+      const emailVal = firebaseUser.email?.toLowerCase().trim() || '';
 
       if (typeof window !== 'undefined') {
         const event = new CustomEvent('native-google-auth-success', { 
@@ -376,79 +433,40 @@ export async function initiateGoogleSignIn(options: AuthInitiationOptions): Prom
             user: firebaseUser, 
             email: emailVal,
             actionType: options.actionType,
-            displayName: firebaseUser.displayName || googleUser?.name || '',
-            photoURL: firebaseUser.photoURL || googleUser?.imageUrl || ''
+            displayName: firebaseUser.displayName || '',
+            photoURL: firebaseUser.photoURL || ''
           } 
         });
         window.dispatchEvent(event);
       }
-      return;
     } catch (err: any) {
-      console.error('Native Google Sign-In failed:', err);
+      console.error('Web Google Popup Auth error:', err);
+      const decomp = decomposeAuthError(err);
       const errStr = String(err?.message || err).toLowerCase();
-      
-      const isCancelled = errStr.includes('cancel') || errStr.includes('closed') || errStr.includes('12501') || errStr.includes('popup_closed_by_user');
-      if (isCancelled) {
-        throw new Error('গুগল সাইন-ইন প্রক্রিয়াটি বাতিল করা হয়েছে।');
+      const errCode = String(err?.code || '').toLowerCase();
+
+      if (errCode.includes('cancelled-popup-request') || errStr.includes('cancelled-popup-request')) {
+        console.warn('Firebase popup request was cancelled due to another active request.');
+        return;
       }
 
-      const isPlayServicesIssue = errStr.includes('service_missing') || errStr.includes('service_disabled') || errStr.includes('google play services');
-      
-      const userFriendlyMessage = isPlayServicesIssue
-        ? 'আপনার ডিভাইসে Google Play Services অনুপস্থিত বা সক্রিয় নয়। দয়া করে ডিভাইসের Google Play Services আপডেট অথবা সক্রিয় করে পুনরায় চেষ্টা করুন।'
-        : (err?.message || 'নেটিভ গুগল সাইন-ইন সম্পন্ন করা যায়নি।');
-
-      authDiagnostics.update({
-        errorMessage: userFriendlyMessage,
-        technicalError: err?.message || String(err),
-        suggestedFix: 'Google Cloud Console-এ Package Name (bd.pro.ssfmym), SHA-1 Fingerprint এবং OAuth Client ID সঠিকভাবে কনফিগার করা আছে কিনা চেক করুন।'
-      });
-
-      throw new Error(userFriendlyMessage);
-    }
-  }
-
-  authDiagnostics.update({
-    chosenMethod: 'Popup',
-    redirectStarted: false
-  });
-
-  try {
-    const result = await signInWithPopup(secondaryAuth, secondaryGoogleProvider);
-    const firebaseUser = result.user;
-    const emailVal = firebaseUser.email?.toLowerCase().trim() || '';
-
-    if (typeof window !== 'undefined') {
-      const event = new CustomEvent('native-google-auth-success', { 
-        detail: { 
-          user: firebaseUser, 
-          email: emailVal,
-          actionType: options.actionType,
-          displayName: firebaseUser.displayName || '',
-          photoURL: firebaseUser.photoURL || ''
-        } 
-      });
-      window.dispatchEvent(event);
-    }
-  } catch (err: any) {
-    console.error('Web Google Popup Auth error:', err);
-    const decomp = decomposeAuthError(err);
-    const errStr = String(err?.message || err).toLowerCase();
-
-    if (errStr.includes('cancel') || errStr.includes('closed') || errStr.includes('popup-closed-by-user')) {
-      throw new Error('গুগল সাইন-ইন উইন্ডো বন্ধ করা হয়েছে।');
-    }
-
-    if (decomp.code.includes('disallowed_useragent') || errStr.includes('disallowed_useragent') || errStr.includes('400') || errStr.includes('malformed')) {
-      if (typeof window !== 'undefined') {
-        const profile = BrowserDetection.detect();
-        const event = new CustomEvent('unsupported-browser-sign-in', { detail: profile });
-        window.dispatchEvent(event);
+      if (errCode.includes('popup-closed-by-user') || errStr.includes('cancel') || errStr.includes('closed') || errStr.includes('popup-closed-by-user')) {
+        throw new Error('গুগল সাইন-ইন উইন্ডো বন্ধ করা হয়েছে।');
       }
-      throw new Error(decomp.message);
-    }
 
-    throw new Error(err?.message || decomp.message);
+      if (decomp.code.includes('disallowed_useragent') || errStr.includes('disallowed_useragent') || errStr.includes('400') || errStr.includes('malformed')) {
+        if (typeof window !== 'undefined') {
+          const profile = BrowserDetection.detect();
+          const event = new CustomEvent('unsupported-browser-sign-in', { detail: profile });
+          window.dispatchEvent(event);
+        }
+        throw new Error(decomp.message);
+      }
+
+      throw new Error(err?.message || decomp.message);
+    }
+  } finally {
+    isGoogleAuthActive = false;
   }
 }
 
