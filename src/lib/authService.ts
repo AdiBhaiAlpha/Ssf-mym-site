@@ -4,12 +4,14 @@ import {
   signInWithPopup, 
   getRedirectResult, 
   AuthProvider,
-  Auth
+  Auth,
+  GoogleAuthProvider,
+  signInWithCredential
 } from 'firebase/auth';
 import { secondaryAuth, secondaryGoogleProvider, saveFirestoreDoc } from '../firebase';
 import { BrowserDetection, BrowserProfile } from './BrowserDetection';
 import { Capacitor } from '@capacitor/core';
-import { Browser } from '@capacitor/browser';
+import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 
 // ==========================================
 // ENVIRONMENT DETECTION TYPE & FUNCTION
@@ -248,7 +250,6 @@ class AuthDiagnosticsStore {
         const parsed = JSON.parse(saved);
         this.state = { ...defaultDiagnostics, ...parsed };
       } else {
-        // Run initial environment detection on load
         const env = detectEnvironment();
         this.state.envBrowser = env.browserName;
         this.state.envOS = env.isIOS ? 'iOS' : env.isAndroid ? 'Android' : 'Desktop/Other';
@@ -317,31 +318,74 @@ export interface AuthInitiationOptions {
 export async function initiateGoogleSignIn(options: AuthInitiationOptions): Promise<void> {
   authDiagnostics.reset();
 
-  if (Capacitor.isNativePlatform()) {
-    if (typeof window !== 'undefined') {
-      // 1. Store action metadata and scroll position
-      localStorage.setItem('auth_redirect_action', options.actionType);
-      localStorage.setItem('scf_auth_scroll_pos', window.scrollY.toString());
-      
-      if (options.pendingInputs) {
-        if (options.actionType === 'nav_register_verify') {
-          localStorage.setItem('scf_pending_nav_reg_inputs', JSON.stringify(options.pendingInputs));
-          localStorage.setItem('scf_pending_nav_verification', 'true');
-        } else if (options.actionType === 'member_form_verify') {
-          localStorage.setItem('scf_pending_form_reg_inputs', JSON.stringify(options.pendingInputs));
-        }
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('auth_redirect_action', options.actionType);
+    localStorage.setItem('scf_auth_scroll_pos', window.scrollY.toString());
+    
+    if (options.pendingInputs) {
+      if (options.actionType === 'nav_register_verify') {
+        localStorage.setItem('scf_pending_nav_reg_inputs', JSON.stringify(options.pendingInputs));
+        localStorage.setItem('scf_pending_nav_verification', 'true');
+      } else if (options.actionType === 'member_form_verify') {
+        localStorage.setItem('scf_pending_form_reg_inputs', JSON.stringify(options.pendingInputs));
       }
     }
+  }
 
+  if (Capacitor.isNativePlatform()) {
     authDiagnostics.update({
-      chosenMethod: 'Redirect',
-      redirectStarted: true
+      chosenMethod: 'Popup',
+      redirectStarted: false
     });
 
-    // Launch Google authentication using Chrome Custom Tabs or the system browser
-    const authUrl = `https://ssfmym.pro.bd/?nativeAuth=true&action=${options.actionType}`;
-    await Browser.open({ url: authUrl, presentationStyle: 'popover' });
-    return;
+    try {
+      // Native Android Google Sign-In with Google Play Services / Credential Manager
+      await GoogleAuth.initialize({
+        clientId: '953122849300-88n085h13a52862d53g58f.apps.googleusercontent.com',
+        scopes: ['profile', 'email'],
+        grantOfflineAccess: true,
+      });
+
+      const googleUser = await GoogleAuth.signIn();
+      const idToken = googleUser?.authentication?.idToken;
+
+      if (!idToken) {
+        throw new Error('গুগল অ্যাকাউন্ট থেকে আইডেন্টিটি টোকেন (ID Token) উদ্ধার করা সম্ভব হয়নি।');
+      }
+
+      // Exchange ID token for Firebase auth credential
+      const credential = GoogleAuthProvider.credential(idToken);
+      const userCredential = await signInWithCredential(secondaryAuth, credential);
+
+      authDiagnostics.update({
+        userRetrieved: userCredential.user?.email || null,
+        tokenVerified: true,
+        sessionCreated: true
+      });
+
+      if (typeof window !== 'undefined') {
+        const event = new CustomEvent('native-google-auth-success', { 
+          detail: { user: userCredential.user, actionType: options.actionType } 
+        });
+        window.dispatchEvent(event);
+      }
+      return;
+    } catch (err: any) {
+      console.error('Native Google Sign-In failed:', err);
+      const isPlayServicesIssue = err?.message?.includes('SERVICE_MISSING') || err?.message?.includes('SERVICE_DISABLED') || err?.message?.includes('Google Play Services');
+      
+      const userFriendlyMessage = isPlayServicesIssue
+        ? 'আপনার ডিভাইসে Google Play Services অনুপস্থিত বা সক্রিয় নয়। দয়া করে ডিভাইসের Google Play Services আপডেট অথবা সক্রিয় করে পুনরায় চেষ্টা করুন।'
+        : (err?.message || 'নেটিভ গুগল সাইন-ইন সম্পন্ন করা যায়নি।');
+
+      authDiagnostics.update({
+        errorMessage: userFriendlyMessage,
+        technicalError: err?.message || String(err),
+        suggestedFix: 'Google Cloud Console-এ Package Name (bd.pro.ssfmym), SHA-1 Fingerprint এবং OAuth Client ID সঠিকভাবে কনফিগার করা আছে কিনা চেক করুন।'
+      });
+
+      throw new Error(userFriendlyMessage);
+    }
   }
 
   const profile = BrowserDetection.detect();
@@ -360,36 +404,12 @@ export async function initiateGoogleSignIn(options: AuthInitiationOptions): Prom
     return;
   }
 
-  const env = detectEnvironment();
-  
-  if (typeof window !== 'undefined') {
-    // 1. Store action metadata and scroll position
-    localStorage.setItem('auth_redirect_action', options.actionType);
-    localStorage.setItem('scf_auth_scroll_pos', window.scrollY.toString());
-    
-    if (options.pendingInputs) {
-      if (options.actionType === 'nav_register_verify') {
-        localStorage.setItem('scf_pending_nav_reg_inputs', JSON.stringify(options.pendingInputs));
-        localStorage.setItem('scf_pending_nav_verification', 'true');
-      } else if (options.actionType === 'member_form_verify') {
-        localStorage.setItem('scf_pending_form_reg_inputs', JSON.stringify(options.pendingInputs));
-      }
-    }
-  }
-
-  // 2. Decide Flow: Default to Redirect. Use Popups only on reliable environments when required.
-  // The user says: "Use signInWithRedirect() as the default authentication method. Never rely solely on signInWithPopup(). If the environment fully supports popups, popup authentication may be used optionally for a smoother UX, but redirect must remain the primary and recommended flow."
-  // Let's decide automatically: Use signInWithRedirect for mobile/WebView/embedded. On Desktop Chrome/Firefox/Edge/Safari, we will use Redirect as the default as well, but we have the capability. To be 100% compliant and prevent any issues, let's use redirect as default everywhere, unless explicitly configured, or let's use signInWithRedirect by default. Actually, signInWithRedirect is 100% robust. Let's make redirect the default as requested, with a clear fallback log.
-  
-  const chosenMethod = env.supportsPopups ? 'Popup' : 'Redirect';
-  // Let's force Redirect as the default since user says "signInWithRedirect() as the default authentication method... redirect must remain the primary and recommended flow."
-  // To keep UX extremely smooth, we'll run signInWithRedirect for everyone, which is absolutely bulletproof.
   authDiagnostics.update({
     chosenMethod: 'Redirect',
     redirectStarted: true
   });
 
-  // Trigger signInWithRedirect
+  // Trigger signInWithRedirect for web fallback
   await signInWithRedirect(secondaryAuth, secondaryGoogleProvider);
 }
 

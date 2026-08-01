@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, ToggleLeft, ToggleRight, Settings, PlusCircle, Pencil, Trash2, Calendar, FileText, BookOpen, Clock, Users, Activity, MessageSquare, Image, RefreshCw, AlertTriangle, Eye, Check, X, ShieldAlert, Upload, Download, BarChart3, TrendingUp, Newspaper, ArrowRight, Zap, Lightbulb, Droplets, Smartphone, Mail, User, MapPin, UserPlus } from 'lucide-react';
+import { Shield, ToggleLeft, ToggleRight, Settings, PlusCircle, Pencil, Trash2, Calendar, FileText, BookOpen, Clock, Users, Activity, MessageSquare, Image, RefreshCw, AlertTriangle, Eye, Check, X, ShieldAlert, Upload, Download, BarChart3, TrendingUp, Newspaper, ArrowRight, Zap, Lightbulb, Droplets, Smartphone, Mail, User, MapPin, UserPlus, GripVertical, ArrowUp, ArrowDown, Move, Save } from 'lucide-react';
 import { News, Blog, Event, Book, Circular, GalleryItem, MemberRegistration, AuditLog, PageVisit, WebSettings, OrgWing, MemberLoginLog, getMemberBadgeText } from '../types';
 import CardVerificationModal from './CardVerificationModal';
 import { useToast } from './Toast';
@@ -280,6 +280,13 @@ export default function AdminDashboard({
   const [unitLead1SearchText, setUnitLead1SearchText] = useState<string>('');
   const [unitLead2SearchText, setUnitLead2SearchText] = useState<string>('');
 
+  // Enhanced Leader Editing, Deleting and Drag-Sort States
+  const [editingLeader, setEditingLeader] = useState<{ category: 'district' | 'executive' | 'units' | 'former'; index: number; name: string; role: string; inst: string; memberCode: string; photoUrl: string } | null>(null);
+  const [editLeaderSearchText, setEditLeaderSearchText] = useState<string>('');
+  const [deletingLeader, setDeletingLeader] = useState<{ category: 'district' | 'executive' | 'units' | 'former'; index: number; name: string; role?: string } | null>(null);
+  const [isSortingMode, setIsSortingMode] = useState<boolean>(false);
+  const [reorderedLeaders, setReorderedLeaders] = useState<any[] | null>(null);
+
   // Form states for invitation
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'admin' | 'super_admin'>('admin');
@@ -310,6 +317,34 @@ export default function AdminDashboard({
   const [idSignerSignatureUrlForm, setIdSignerSignatureUrlForm] = useState(db.settings.idSignerSignatureUrl || '');
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSuccess, setSettingsSuccess] = useState(false);
+
+  // Leadership management helper functions
+  const checkPermissionAndSave = async (update: Partial<WebSettings>) => {
+    if (!userEmail) {
+      toast.error('অনুমতি বিহীন অনুরোধ! অনুগ্রহ করে পুনরায় লগইন করুন।');
+      return false;
+    }
+    setIsSavingLeaders(true);
+    const success = await onSaveSettings(update);
+    setIsSavingLeaders(false);
+    return success;
+  };
+
+  const handleSaveDistrict = async (newList: any[]) => {
+    await checkPermissionAndSave({ leadersDistrict: newList });
+  };
+
+  const handleSaveExecutive = async (newList: any[]) => {
+    await checkPermissionAndSave({ leadersExecutive: newList });
+  };
+
+  const handleSaveUnits = async (newList: any[]) => {
+    await checkPermissionAndSave({ leadersUnits: newList });
+  };
+
+  const handleSaveFormer = async (newList: any[]) => {
+    await checkPermissionAndSave({ leadersFormer: newList });
+  };
 
   // States for Member Activity Log search/filtering
   const [activitySearch, setActivitySearch] = useState('');
@@ -2212,30 +2247,6 @@ export default function AdminDashboard({
                 </p>
 
                 {(() => {
-                  const handleSaveDistrict = async (newList: any[]) => {
-                    setIsSavingLeaders(true);
-                    await onSaveSettings({ leadersDistrict: newList });
-                    setIsSavingLeaders(false);
-                  };
-
-                  const handleSaveExecutive = async (newList: any[]) => {
-                    setIsSavingLeaders(true);
-                    await onSaveSettings({ leadersExecutive: newList });
-                    setIsSavingLeaders(false);
-                  };
-
-                  const handleSaveUnits = async (newList: any[]) => {
-                    setIsSavingLeaders(true);
-                    await onSaveSettings({ leadersUnits: newList });
-                    setIsSavingLeaders(false);
-                  };
-
-                  const handleSaveFormer = async (newList: any[]) => {
-                    setIsSavingLeaders(true);
-                    await onSaveSettings({ leadersFormer: newList });
-                    setIsSavingLeaders(false);
-                  };
-
                   return (
                     <div className="space-y-4">
                       {/* Sub tab navigator */}
@@ -2264,33 +2275,180 @@ export default function AdminDashboard({
                       {/* District Committee Section */}
                       {leadersSubTab === 'district' && (
                         <div className="space-y-4 font-sans">
-                          <div className="space-y-2 max-h-52 overflow-y-auto border border-zinc-200 dark:border-zinc-800 p-2.5 rounded bg-white dark:bg-zinc-955">
-                            {(db.settings.leadersDistrict || []).map((leader: any, idx: number) => (
-                              <div key={idx} className="flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/60 p-2 rounded border border-zinc-100 dark:border-zinc-855">
-                                <div className="text-xs">
-                                  <span className="font-bold text-zinc-800 dark:text-zinc-200">{leader.name}</span>
-                                  {leader.role && <span className="text-rose-650 dark:text-rose-455 text-[10px] ml-2 font-semibold">({leader.role})</span>}
-                                  {leader.inst && <span className="text-zinc-500 text-[10px] ml-2 block sm:inline">• {leader.inst}</span>}
-                                  {leader.memberCode && <span className="text-[10px] text-zinc-400 font-mono ml-2 block sm:inline">[কোড: {leader.memberCode}]</span>}
-                                </div>
+                          {/* Reordering and Header controls */}
+                          <div className="border border-zinc-200 dark:border-zinc-800 rounded bg-white dark:bg-zinc-955 overflow-hidden">
+                            <div className="flex justify-between items-center bg-zinc-100 dark:bg-zinc-900 px-3 py-2 border-b border-zinc-200 dark:border-zinc-800">
+                              <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
+                                <Users className="w-3.5 h-3.5 text-rose-600" />
+                                <span>জেলা সংসদ সদস্য তালিকা ({(db.settings.leadersDistrict || []).length} জন)</span>
+                              </span>
+                              {!isSortingMode ? (
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    const updated = (db.settings.leadersDistrict || []).filter((_: any, i: number) => i !== idx);
-                                    handleSaveDistrict(updated);
+                                    setIsSortingMode(true);
+                                    setReorderedLeaders([...(db.settings.leadersDistrict || [])]);
                                   }}
-                                  disabled={isSavingLeaders}
-                                  className="text-rose-600 hover:text-rose-800 p-1 cursor-pointer"
-                                  title="মুছে ফেলুন"
+                                  className="px-2.5 py-1 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 rounded text-xs font-bold flex items-center gap-1 cursor-pointer transition"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <Move className="w-3.5 h-3.5 text-rose-600" />
+                                  <span>ক্রম বিন্যাস / সাজান</span>
                                 </button>
-                              </div>
-                            ))}
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      if (reorderedLeaders) {
+                                        await handleSaveDistrict(reorderedLeaders);
+                                        toast.success('জেলা সংসদের নতুন সদস্য ক্রম সফলভাবে সংরক্ষিত হয়েছে।');
+                                      }
+                                      setIsSortingMode(false);
+                                      setReorderedLeaders(null);
+                                    }}
+                                    disabled={isSavingLeaders}
+                                    className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm"
+                                  >
+                                    <Save className="w-3.5 h-3.5" />
+                                    <span>ক্রম সংরক্ষণ করুন</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setIsSortingMode(false);
+                                      setReorderedLeaders(null);
+                                    }}
+                                    className="px-2.5 py-1 bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded text-xs font-bold hover:bg-zinc-300 dark:hover:bg-zinc-700 cursor-pointer"
+                                  >
+                                    বাতিল
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* List of leaders */}
+                            <div className="space-y-2 max-h-72 overflow-y-auto p-2.5">
+                              {(isSortingMode ? (reorderedLeaders || []) : (db.settings.leadersDistrict || [])).map((leader: any, idx: number) => (
+                                <div key={idx} className="flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/80 p-2.5 rounded border border-zinc-200 dark:border-zinc-800 hover:border-rose-300 dark:hover:border-rose-900 transition-all">
+                                  <div className="flex items-center space-x-3 min-w-0">
+                                    {isSortingMode && (
+                                      <div className="flex items-center space-x-1 shrink-0">
+                                        <span className="text-[10px] font-mono font-bold text-zinc-400 dark:text-zinc-500 w-5 text-center">#{idx + 1}</span>
+                                        <div className="flex flex-col">
+                                          <button
+                                            type="button"
+                                            disabled={idx === 0}
+                                            onClick={() => {
+                                              if (!reorderedLeaders || idx === 0) return;
+                                              const next = [...reorderedLeaders];
+                                              const temp = next[idx];
+                                              next[idx] = next[idx - 1];
+                                              next[idx - 1] = temp;
+                                              setReorderedLeaders(next);
+                                            }}
+                                            className="p-0.5 text-zinc-500 hover:text-rose-600 disabled:opacity-30 cursor-pointer"
+                                            title="উপরে নিয়ে যান"
+                                          >
+                                            <ArrowUp className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            disabled={idx === reorderedLeaders!.length - 1}
+                                            onClick={() => {
+                                              if (!reorderedLeaders || idx === reorderedLeaders.length - 1) return;
+                                              const next = [...reorderedLeaders];
+                                              const temp = next[idx];
+                                              next[idx] = next[idx + 1];
+                                              next[idx + 1] = temp;
+                                              setReorderedLeaders(next);
+                                            }}
+                                            className="p-0.5 text-zinc-500 hover:text-rose-600 disabled:opacity-30 cursor-pointer"
+                                            title="নিচে নিয়ে যান"
+                                          >
+                                            <ArrowDown className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {leader.photoUrl ? (
+                                      <img src={leader.photoUrl} alt={leader.name} className="w-9 h-9 rounded-full object-cover border border-rose-200 dark:border-rose-900 shrink-0" referrerPolicy="no-referrer" />
+                                    ) : (
+                                      <div className="w-9 h-9 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 font-bold text-xs flex items-center justify-center shrink-0 border border-rose-200 dark:border-rose-900">
+                                        {leader.name ? leader.name[0] : 'S'}
+                                      </div>
+                                    )}
+
+                                    <div className="text-xs min-w-0">
+                                      <div className="font-bold text-zinc-900 dark:text-zinc-100 truncate flex items-center gap-1.5">
+                                        <span>{leader.name}</span>
+                                        {leader.memberCode && (
+                                          <span className="text-[9px] bg-rose-50 dark:bg-rose-950/80 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-900 px-1 rounded font-mono font-bold">
+                                            {leader.memberCode}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-[11px] text-rose-600 dark:text-rose-400 font-semibold">{leader.role}</div>
+                                      {leader.inst && <div className="text-[10px] text-zinc-500 dark:text-zinc-400 truncate">{leader.inst}</div>}
+                                    </div>
+                                  </div>
+
+                                  {!isSortingMode && (
+                                    <div className="flex items-center space-x-1 shrink-0 ml-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingLeader({
+                                            category: 'district',
+                                            index: idx,
+                                            name: leader.name || '',
+                                            role: leader.role || '',
+                                            inst: leader.inst || '',
+                                            memberCode: leader.memberCode || '',
+                                            photoUrl: leader.photoUrl || ''
+                                          });
+                                          setEditLeaderSearchText('');
+                                        }}
+                                        disabled={isSavingLeaders}
+                                        className="p-1.5 text-zinc-600 hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded transition cursor-pointer flex items-center gap-1 text-[11px] font-semibold"
+                                        title="সম্পাদনা করুন"
+                                      >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                        <span className="hidden sm:inline">সম্পাদনা</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setDeletingLeader({
+                                            category: 'district',
+                                            index: idx,
+                                            name: leader.name,
+                                            role: leader.role
+                                          });
+                                        }}
+                                        disabled={isSavingLeaders}
+                                        className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded transition cursor-pointer flex items-center gap-1 text-[11px] font-semibold"
+                                        title="মুছে ফেলুন"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                        <span className="hidden sm:inline">মুছুন</span>
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                              {(db.settings.leadersDistrict || []).length === 0 && (
+                                <div className="p-4 text-center text-xs text-zinc-400 italic">কোনো জেলা সংসদ সদস্য তালিকাভুক্ত নেই।</div>
+                              )}
+                            </div>
                           </div>
 
+                          {/* Add New Leader Form */}
                           <div className="p-3.5 border border-zinc-200 dark:border-zinc-805 rounded bg-white dark:bg-zinc-955 space-y-3">
-                            <h5 className="text-xs font-bold text-rose-700 dark:text-rose-455">নতুন জেলা সংসদ নেতা যুক্ত করুন</h5>
+                            <h5 className="text-xs font-bold text-rose-700 dark:text-rose-455 flex items-center gap-1.5">
+                              <PlusCircle className="w-3.5 h-3.5" />
+                              <span>নতুন জেলা সংসদ নেতা যুক্ত করুন</span>
+                            </h5>
                             
                             {/* Autocomplete Member Search Linker */}
                             <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-2.5 rounded text-xs space-y-1.5 font-sans">
@@ -2378,7 +2536,7 @@ export default function AdminDashboard({
 
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={async () => {
                                 if (!dName || !dRole) return;
                                 const updated = [...(db.settings.leadersDistrict || []), {
                                   name: dName,
@@ -2387,15 +2545,16 @@ export default function AdminDashboard({
                                   memberCode: dMemberCode || null,
                                   photoUrl: dPhotoUrl || null
                                 }];
-                                handleSaveDistrict(updated);
+                                await handleSaveDistrict(updated);
                                 setDName('');
                                 setDRole('');
                                 setDInst('');
                                 setDMemberCode('');
                                 setDPhotoUrl('');
+                                toast.success('নতুন জেলা সংসদ নেতা সফলভাবে যুক্ত করা হয়েছে।');
                               }}
                               disabled={isSavingLeaders || !dName || !dRole}
-                              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-bold cursor-pointer"
+                              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-bold cursor-pointer disabled:opacity-50"
                             >
                               যুক্ত করুন
                             </button>
@@ -2406,33 +2565,180 @@ export default function AdminDashboard({
                       {/* Executive Committee Section */}
                       {leadersSubTab === 'executive' && (
                         <div className="space-y-4 font-sans">
-                          <div className="space-y-2 max-h-52 overflow-y-auto border border-zinc-200 dark:border-zinc-800 p-2.5 rounded bg-white dark:bg-zinc-955">
-                            {(db.settings.leadersExecutive || []).map((leader: any, idx: number) => (
-                              <div key={idx} className="flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/60 p-2 rounded border border-zinc-100 dark:border-zinc-850">
-                                <div className="text-xs">
-                                  <span className="font-bold text-zinc-800 dark:text-zinc-200">{leader.name}</span>
-                                  {leader.role && <span className="text-rose-650 dark:text-rose-455 text-[10px] ml-2 font-semibold">({leader.role})</span>}
-                                  {leader.inst && <span className="text-zinc-500 text-[10px] ml-2 block sm:inline">• {leader.inst}</span>}
-                                  {leader.memberCode && <span className="text-[10px] text-zinc-400 font-mono ml-2 block sm:inline">[কোড: {leader.memberCode}]</span>}
-                                </div>
+                          {/* Reordering and Header controls */}
+                          <div className="border border-zinc-200 dark:border-zinc-800 rounded bg-white dark:bg-zinc-955 overflow-hidden">
+                            <div className="flex justify-between items-center bg-zinc-100 dark:bg-zinc-900 px-3 py-2 border-b border-zinc-200 dark:border-zinc-800">
+                              <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
+                                <Users className="w-3.5 h-3.5 text-rose-600" />
+                                <span>কার্যকরী সদস্য তালিকা ({(db.settings.leadersExecutive || []).length} জন)</span>
+                              </span>
+                              {!isSortingMode ? (
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    const updated = (db.settings.leadersExecutive || []).filter((_: any, i: number) => i !== idx);
-                                    handleSaveExecutive(updated);
+                                    setIsSortingMode(true);
+                                    setReorderedLeaders([...(db.settings.leadersExecutive || [])]);
                                   }}
-                                  disabled={isSavingLeaders}
-                                  className="text-rose-600 hover:text-rose-800 p-1 cursor-pointer"
-                                  title="মুছে ফেলুন"
+                                  className="px-2.5 py-1 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 rounded text-xs font-bold flex items-center gap-1 cursor-pointer transition"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <Move className="w-3.5 h-3.5 text-rose-600" />
+                                  <span>ক্রম বিন্যাস / সাজান</span>
                                 </button>
-                              </div>
-                            ))}
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      if (reorderedLeaders) {
+                                        await handleSaveExecutive(reorderedLeaders);
+                                        toast.success('কার্যকরী সদস্যদের নতুন ক্রম সফলভাবে সংরক্ষিত হয়েছে।');
+                                      }
+                                      setIsSortingMode(false);
+                                      setReorderedLeaders(null);
+                                    }}
+                                    disabled={isSavingLeaders}
+                                    className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm"
+                                  >
+                                    <Save className="w-3.5 h-3.5" />
+                                    <span>ক্রম সংরক্ষণ করুন</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setIsSortingMode(false);
+                                      setReorderedLeaders(null);
+                                    }}
+                                    className="px-2.5 py-1 bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded text-xs font-bold hover:bg-zinc-300 dark:hover:bg-zinc-700 cursor-pointer"
+                                  >
+                                    বাতিল
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* List of executive members */}
+                            <div className="space-y-2 max-h-72 overflow-y-auto p-2.5">
+                              {(isSortingMode ? (reorderedLeaders || []) : (db.settings.leadersExecutive || [])).map((leader: any, idx: number) => (
+                                <div key={idx} className="flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/80 p-2.5 rounded border border-zinc-200 dark:border-zinc-800 hover:border-rose-300 dark:hover:border-rose-900 transition-all">
+                                  <div className="flex items-center space-x-3 min-w-0">
+                                    {isSortingMode && (
+                                      <div className="flex items-center space-x-1 shrink-0">
+                                        <span className="text-[10px] font-mono font-bold text-zinc-400 dark:text-zinc-500 w-5 text-center">#{idx + 1}</span>
+                                        <div className="flex flex-col">
+                                          <button
+                                            type="button"
+                                            disabled={idx === 0}
+                                            onClick={() => {
+                                              if (!reorderedLeaders || idx === 0) return;
+                                              const next = [...reorderedLeaders];
+                                              const temp = next[idx];
+                                              next[idx] = next[idx - 1];
+                                              next[idx - 1] = temp;
+                                              setReorderedLeaders(next);
+                                            }}
+                                            className="p-0.5 text-zinc-500 hover:text-rose-600 disabled:opacity-30 cursor-pointer"
+                                            title="উপরে নিয়ে যান"
+                                          >
+                                            <ArrowUp className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            disabled={idx === reorderedLeaders!.length - 1}
+                                            onClick={() => {
+                                              if (!reorderedLeaders || idx === reorderedLeaders.length - 1) return;
+                                              const next = [...reorderedLeaders];
+                                              const temp = next[idx];
+                                              next[idx] = next[idx + 1];
+                                              next[idx + 1] = temp;
+                                              setReorderedLeaders(next);
+                                            }}
+                                            className="p-0.5 text-zinc-500 hover:text-rose-600 disabled:opacity-30 cursor-pointer"
+                                            title="নিচে নিয়ে যান"
+                                          >
+                                            <ArrowDown className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {leader.photoUrl ? (
+                                      <img src={leader.photoUrl} alt={leader.name} className="w-9 h-9 rounded-full object-cover border border-rose-200 dark:border-rose-900 shrink-0" referrerPolicy="no-referrer" />
+                                    ) : (
+                                      <div className="w-9 h-9 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 font-bold text-xs flex items-center justify-center shrink-0 border border-rose-200 dark:border-rose-900">
+                                        {leader.name ? leader.name[0] : 'E'}
+                                      </div>
+                                    )}
+
+                                    <div className="text-xs min-w-0">
+                                      <div className="font-bold text-zinc-900 dark:text-zinc-100 truncate flex items-center gap-1.5">
+                                        <span>{leader.name}</span>
+                                        {leader.memberCode && (
+                                          <span className="text-[9px] bg-rose-50 dark:bg-rose-950/80 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-900 px-1 rounded font-mono font-bold">
+                                            {leader.memberCode}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-[11px] text-rose-600 dark:text-rose-400 font-semibold">{leader.role}</div>
+                                      {leader.inst && <div className="text-[10px] text-zinc-500 dark:text-zinc-400 truncate">{leader.inst}</div>}
+                                    </div>
+                                  </div>
+
+                                  {!isSortingMode && (
+                                    <div className="flex items-center space-x-1 shrink-0 ml-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingLeader({
+                                            category: 'executive',
+                                            index: idx,
+                                            name: leader.name || '',
+                                            role: leader.role || '',
+                                            inst: leader.inst || '',
+                                            memberCode: leader.memberCode || '',
+                                            photoUrl: leader.photoUrl || ''
+                                          });
+                                          setEditLeaderSearchText('');
+                                        }}
+                                        disabled={isSavingLeaders}
+                                        className="p-1.5 text-zinc-600 hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded transition cursor-pointer flex items-center gap-1 text-[11px] font-semibold"
+                                        title="সম্পাদনা করুন"
+                                      >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                        <span className="hidden sm:inline">সম্পাদনা</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setDeletingLeader({
+                                            category: 'executive',
+                                            index: idx,
+                                            name: leader.name,
+                                            role: leader.role
+                                          });
+                                        }}
+                                        disabled={isSavingLeaders}
+                                        className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded transition cursor-pointer flex items-center gap-1 text-[11px] font-semibold"
+                                        title="মুছে ফেলুন"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                        <span className="hidden sm:inline">মুছুন</span>
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                              {(db.settings.leadersExecutive || []).length === 0 && (
+                                <div className="p-4 text-center text-xs text-zinc-400 italic">কোনো কার্যকরী সদস্য তালিকাভুক্ত নেই।</div>
+                              )}
+                            </div>
                           </div>
 
+                          {/* Add New Executive Member Form */}
                           <div className="p-3.5 border border-zinc-200 dark:border-zinc-808 rounded bg-white dark:bg-zinc-955 space-y-3 font-sans">
-                            <h5 className="text-xs font-bold text-rose-700 dark:text-rose-455">নতুন কার্যকরী সদস্য যুক্ত করুন</h5>
+                            <h5 className="text-xs font-bold text-rose-700 dark:text-rose-455 flex items-center gap-1.5">
+                              <PlusCircle className="w-3.5 h-3.5" />
+                              <span>নতুন কার্যকরী সদস্য যুক্ত করুন</span>
+                            </h5>
 
                             {/* Autocomplete Member Search Linker */}
                             <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-2.5 rounded text-xs space-y-1.5 font-sans">
@@ -2522,7 +2828,7 @@ export default function AdminDashboard({
 
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={async () => {
                                 if (!eName || !eRole) return;
                                 const updated = [...(db.settings.leadersExecutive || []), {
                                   name: eName,
@@ -2531,15 +2837,16 @@ export default function AdminDashboard({
                                   memberCode: eMemberCode || null,
                                   photoUrl: ePhotoUrl || null
                                 }];
-                                handleSaveExecutive(updated);
+                                await handleSaveExecutive(updated);
                                 setEName('');
                                 setERole('কার্যকরী সদস্য');
                                 setEInst('');
                                 setEMemberCode('');
                                 setEPhotoUrl('');
+                                toast.success('নতুন কার্যকরী সদস্য সফলভাবে যুক্ত করা হয়েছে।');
                               }}
                               disabled={isSavingLeaders || !eName || !eRole}
-                              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-bold cursor-pointer"
+                              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-bold cursor-pointer disabled:opacity-50"
                             >
                               যুক্ত করুন
                             </button>
@@ -4853,6 +5160,209 @@ export default function AdminDashboard({
                 </button>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Edit Leader Modal */}
+      {editingLeader && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-2xl max-w-lg w-full p-5 space-y-4 font-sans text-zinc-900 dark:text-zinc-100 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-zinc-100 dark:border-zinc-800 pb-3">
+              <h3 className="text-sm font-bold text-rose-600 dark:text-rose-400 flex items-center gap-2">
+                <Pencil className="w-4 h-4" />
+                <span>{editingLeader.category === 'district' ? 'জেলা সংসদ নেতা' : 'কার্যকরী সদস্য'} তথ্য সম্পাদনা</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingLeader(null)}
+                className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 p-1 rounded-full cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Linker option inside edit modal */}
+            <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-3 rounded text-xs space-y-1.5 font-sans">
+              <label className="block text-[10px] text-zinc-500 uppercase tracking-wider font-extrabold">সদস্য তালিকায় লিংক আপডেট করুন (আইডি বা নাম লিখুন)</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="সদস্যের নাম বা কোড দিয়ে খুঁজুন..."
+                  className="w-full text-xs border border-zinc-200 dark:border-zinc-700 rounded px-2.5 py-1.5 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-white"
+                  value={editLeaderSearchText}
+                  onChange={(e) => setEditLeaderSearchText(e.target.value)}
+                />
+                {editLeaderSearchText && (
+                  <div className="absolute z-30 top-full inset-x-0 mt-1 max-h-40 overflow-y-auto bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-xl text-xs">
+                    {db.memberships
+                      .filter(m => m.status === 'verified' && (
+                        m.name.toLowerCase().includes(editLeaderSearchText.toLowerCase()) || 
+                        m.id.toLowerCase().includes(editLeaderSearchText.toLowerCase())
+                      ))
+                      .map(m => {
+                        const cleanId = `SSF-MYM-${m.id.substring(m.id.length - 5).toUpperCase()}`;
+                        return (
+                          <button
+                            type="button"
+                            key={m.id}
+                            onClick={() => {
+                              setEditingLeader(prev => prev ? ({
+                                ...prev,
+                                name: m.name,
+                                memberCode: cleanId,
+                                photoUrl: m.photoUrl || prev.photoUrl,
+                                inst: m.institution || prev.inst
+                              }) : null);
+                              setEditLeaderSearchText('');
+                            }}
+                            className="w-full px-3 py-2 text-left hover:bg-rose-50 dark:hover:bg-rose-950/30 border-b border-zinc-100 dark:border-zinc-800 last:border-b-0 cursor-pointer block"
+                          >
+                            <div className="font-bold text-zinc-800 dark:text-zinc-200">{m.name}</div>
+                            <div className="text-[10px] text-zinc-400 font-mono mt-0.5">{cleanId} • {m.institution}</div>
+                          </button>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-700 dark:text-zinc-300 mb-1">নেতার নাম *</label>
+                <input
+                  type="text"
+                  className="w-full border border-zinc-200 dark:border-zinc-800 rounded px-3 py-2 bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-white"
+                  value={editingLeader.name}
+                  onChange={(e) => setEditingLeader({ ...editingLeader, name: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-700 dark:text-zinc-300 mb-1">পদবী *</label>
+                <input
+                  type="text"
+                  className="w-full border border-zinc-200 dark:border-zinc-800 rounded px-3 py-2 bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-white"
+                  value={editingLeader.role}
+                  onChange={(e) => setEditingLeader({ ...editingLeader, role: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-700 dark:text-zinc-300 mb-1">শিক্ষা প্রতিষ্ঠান</label>
+                <input
+                  type="text"
+                  className="w-full border border-zinc-200 dark:border-zinc-800 rounded px-3 py-2 bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-white"
+                  value={editingLeader.inst}
+                  onChange={(e) => setEditingLeader({ ...editingLeader, inst: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-700 dark:text-zinc-300 mb-1">মেম্বার কোড (ঐচ্ছিক)</label>
+                <input
+                  type="text"
+                  className="w-full border border-zinc-200 dark:border-zinc-800 rounded px-3 py-2 bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-white font-mono"
+                  value={editingLeader.memberCode}
+                  onChange={(e) => setEditingLeader({ ...editingLeader, memberCode: e.target.value })}
+                />
+              </div>
+
+              <FileUploader
+                label="ছবি আপলোড বা লিঙ্কঃ"
+                value={editingLeader.photoUrl}
+                onChange={(url) => setEditingLeader({ ...editingLeader, photoUrl: url })}
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setEditingLeader(null)}
+                className="px-4 py-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded text-xs font-bold cursor-pointer"
+              >
+                বাতিল
+              </button>
+              <button
+                type="button"
+                disabled={isSavingLeaders || !editingLeader.name || !editingLeader.role}
+                onClick={async () => {
+                  if (editingLeader.category === 'district') {
+                    const list = [...(db.settings.leadersDistrict || [])];
+                    list[editingLeader.index] = {
+                      name: editingLeader.name,
+                      role: editingLeader.role,
+                      inst: editingLeader.inst || null,
+                      memberCode: editingLeader.memberCode || null,
+                      photoUrl: editingLeader.photoUrl || null
+                    };
+                    await handleSaveDistrict(list);
+                  } else {
+                    const list = [...(db.settings.leadersExecutive || [])];
+                    list[editingLeader.index] = {
+                      name: editingLeader.name,
+                      role: editingLeader.role,
+                      inst: editingLeader.inst || null,
+                      memberCode: editingLeader.memberCode || null,
+                      photoUrl: editingLeader.photoUrl || null
+                    };
+                    await handleSaveExecutive(list);
+                  }
+                  toast.success('সদস্যের তথ্য সফলভাবে হালনাগাদ করা হয়েছে।');
+                  setEditingLeader(null);
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-bold cursor-pointer disabled:opacity-50"
+              >
+                সংরক্ষণ করুন
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Leader Confirmation Dialog */}
+      {deletingLeader && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-2xl max-w-md w-full p-5 space-y-4 font-sans text-zinc-900 dark:text-zinc-100">
+            <div className="flex items-center space-x-3 text-rose-600 dark:text-rose-400">
+              <div className="p-2 bg-rose-100 dark:bg-rose-950/80 rounded-full">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <h3 className="text-sm font-bold">সদস্য অপসারণ নিশ্চিতকরণ</h3>
+            </div>
+
+            <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
+              আপনি কি নিশ্চিতভাবে <strong className="text-zinc-900 dark:text-white">"{deletingLeader.name}"</strong> ({deletingLeader.role}) -কে জেলা সংসদ / নেতৃত্ব তালিকা থেকে সরিয়ে দিতে চান?
+            </p>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingLeader(null)}
+                className="px-4 py-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded text-xs font-bold cursor-pointer"
+              >
+                বাতিল
+              </button>
+              <button
+                type="button"
+                disabled={isSavingLeaders}
+                onClick={async () => {
+                  if (deletingLeader.category === 'district') {
+                    const list = (db.settings.leadersDistrict || []).filter((_: any, idx: number) => idx !== deletingLeader.index);
+                    await handleSaveDistrict(list);
+                  } else {
+                    const list = (db.settings.leadersExecutive || []).filter((_: any, idx: number) => idx !== deletingLeader.index);
+                    await handleSaveExecutive(list);
+                  }
+                  toast.success('সদস্যকে সফলভাবে অপসারণ করা হয়েছে।');
+                  setDeletingLeader(null);
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-bold cursor-pointer disabled:opacity-50"
+              >
+                হ্যাঁ, মুছে ফেলুন
+              </button>
+            </div>
           </div>
         </div>
       )}

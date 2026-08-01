@@ -22,7 +22,6 @@ import { fetchFirestoreDatabase, saveFirestoreDoc, deleteFirestoreDoc, resetFire
 import { getRedirectResult, signInWithCredential, GoogleAuthProvider, signInWithRedirect } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { Capacitor } from '@capacitor/core';
-import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 import { authDiagnostics, validateFirebaseUser, decomposeAuthError, logMemberLoginDirect } from './lib/authService';
 import { motion, AnimatePresence } from 'motion/react';
 import { updateSEOMetadata } from './lib/seo';
@@ -262,19 +261,6 @@ export default function App() {
       }
     };
   }, [db]);
-
-  // Initialize native Google Auth plugin (required on Android/iOS to avoid
-  // Error 403: disallowed_useragent, since it opens a secure system browser
-  // flow instead of an embedded WebView)
-  useEffect(() => {
-    if (Capacitor.isNativePlatform()) {
-      GoogleAuth.initialize({
-        clientId: "953122849300-ia6mch7purs0l6rdsftpi5qcuukdndlm.apps.googleusercontent.com",
-        scopes: ["profile", "email"],
-        grantOfflineAccess: true,
-      });
-    }
-  }, []);
 
   // Listen for unsupported browser sign-in events
   useEffect(() => {
@@ -1507,110 +1493,8 @@ export default function App() {
               await secondaryAuth.signOut();
             }
             localStorage.setItem('auth_redirect_action', nativeAuthAction);
-
-            // NOTE: Firebase's signInWithRedirect() relies on an embedded WebView
-            // redirect flow which Google blocks on native mobile platforms.
-            // On native platforms we use the @capacitor/google-auth plugin
-            // (native Google Sign-In SDK) instead, then bridge the resulting
-            // idToken into Firebase via signInWithCredential. Web keeps using
-            // signInWithRedirect exactly as before.
-            if (Capacitor.isNativePlatform()) {
-              try {
-                const googleUser = await GoogleAuth.signIn();
-                const idToken = googleUser?.authentication?.idToken;
-                const accessToken = googleUser?.authentication?.accessToken;
-
-                if (!idToken) {
-                  toast.error('গুগল সাইন-ইন থেকে টোকেন পাওয়া যায়নি।');
-                  setAuthProcessing(false);
-                  return;
-                }
-
-                const credential = GoogleAuthProvider.credential(idToken, accessToken || undefined);
-                const userCredential = await signInWithCredential(secondaryAuth, credential);
-                const user = userCredential.user;
-
-                // Validate the user
-                const valReport = await validateFirebaseUser(user);
-                if (!valReport.isValid) {
-                  toast.error(valReport.reason || 'Authentication verification failed.');
-                  setAuthProcessing(false);
-                  return;
-                }
-
-                const emailVal = valReport.email!.toLowerCase().trim();
-
-                // 1. Check Super Admin
-                if (emailVal === 'chitronbhattacharjee@gmail.com') {
-                  await handleLogin(emailVal);
-                  toast.success('সুপার এডমিন হিসেবে গুগল লগইন সফল হয়েছে!');
-                  await logMemberLoginDirect(emailVal, 'success', 'সুপার এডমিন (চিত্রণ ভট্টাচার্য) গুগল দিয়ে সরাসরি পোর্টালে প্রবেশ করেছেন।');
-                  setCurrentTab('member-portal');
-                  cleanupRedirectStorage();
-                  setAuthProcessing(false);
-                  return;
-                }
-
-                // Search in memberships list
-                const memberships = db ? (db.memberships || []) : [];
-                const foundMember = memberships.find(m => m.email?.toLowerCase().trim() === emailVal);
-
-                if (nativeAuthAction === 'nav_login' || nativeAuthAction === 'portal_login') {
-                  if (!foundMember) {
-                    toast.warning('দুঃখিত, এই গুগল অ্যাকাউন্টের বিপরীতে কোনো সদস্য অ্যাকাউন্ট পাওয়া যায়নি।');
-
-                    // Autofill fields for the registration form
-                    const autofillData = {
-                      name: valReport.displayName || '',
-                      email: emailVal,
-                      gender: '',
-                      organization: '',
-                      unit: '',
-                      education: '',
-                      phone: '',
-                      photoUrl: valReport.photoURL || '',
-                    };
-                    localStorage.setItem('scf_pending_nav_reg_inputs', JSON.stringify(autofillData));
-                    localStorage.setItem('scf_pending_nav_verification', 'true');
-                    setCurrentTab('membership-form');
-                  } else {
-                    await handleLogin(emailVal);
-                    toast.success('সদস্য পোর্টালে গুগল লগইন সফল হয়েছে!');
-                    await logMemberLoginDirect(emailVal, 'success', 'গুগল লগইন ব্যবহার করে সদস্য পোর্টালে প্রবেশ করেছেন।');
-                    setCurrentTab('member-portal');
-                  }
-                } else if (nativeAuthAction === 'member_form_verify') {
-                  // If verifying on membership form, prefill the inputs
-                  const storedInputsStr = localStorage.getItem('scf_pending_form_reg_inputs');
-                  if (storedInputsStr) {
-                    try {
-                      const inputs = JSON.parse(storedInputsStr);
-                      inputs.email = emailVal;
-                      inputs.name = inputs.name || valReport.displayName || '';
-                      inputs.photoUrl = inputs.photoUrl || valReport.photoURL || '';
-                      localStorage.setItem('scf_pending_form_reg_inputs', JSON.stringify(inputs));
-                    } catch (e) {
-                      console.error(e);
-                    }
-                  }
-                  toast.success('গুগল অ্যাকাউন্ট ভেরিফিকেশন সফল হয়েছে!');
-                  const event = new CustomEvent('google-verify-success', { detail: { email: emailVal, photoUrl: valReport.photoURL } });
-                  window.dispatchEvent(event);
-                }
-
-                cleanupRedirectStorage();
-                setAuthProcessing(false);
-                return;
-              } catch (nativeErr: any) {
-                console.error('Native Google Sign-In failed:', nativeErr);
-                toast.error('নেটিভ গুগল সাইন-ইন ব্যর্থ হয়েছে: ' + (nativeErr?.message || ''));
-                setAuthProcessing(false);
-                return;
-              }
-            } else {
-              await signInWithRedirect(secondaryAuth, secondaryGoogleProvider);
-              return;
-            }
+            await signInWithRedirect(secondaryAuth, secondaryGoogleProvider);
+            return;
           }
           return;
         }
