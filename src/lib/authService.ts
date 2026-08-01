@@ -346,8 +346,8 @@ export async function initiateGoogleSignIn(options: AuthInitiationOptions): Prom
         grantOfflineAccess: true,
       });
 
-      const googleUser = await GoogleAuth.signIn();
-      const idToken = googleUser?.authentication?.idToken;
+      const googleUser: any = await GoogleAuth.signIn();
+      const idToken = googleUser?.authentication?.idToken || googleUser?.idToken;
 
       if (!idToken) {
         throw new Error('গুগল অ্যাকাউন্ট থেকে আইডেন্টিটি টোকেন (ID Token) উদ্ধার করা সম্ভব হয়নি।');
@@ -356,23 +356,43 @@ export async function initiateGoogleSignIn(options: AuthInitiationOptions): Prom
       // Exchange ID token for Firebase auth credential
       const credential = GoogleAuthProvider.credential(idToken);
       const userCredential = await signInWithCredential(secondaryAuth, credential);
+      const firebaseUser = userCredential.user;
+
+      if (!firebaseUser || !firebaseUser.email) {
+        throw new Error('ফায়ারবেস অথেন্টিকেশন সম্পন্ন করা যায়নি।');
+      }
+
+      const emailVal = firebaseUser.email.toLowerCase().trim();
 
       authDiagnostics.update({
-        userRetrieved: userCredential.user?.email || null,
+        userRetrieved: emailVal,
         tokenVerified: true,
         sessionCreated: true
       });
 
       if (typeof window !== 'undefined') {
         const event = new CustomEvent('native-google-auth-success', { 
-          detail: { user: userCredential.user, actionType: options.actionType } 
+          detail: { 
+            user: firebaseUser, 
+            email: emailVal,
+            actionType: options.actionType,
+            displayName: firebaseUser.displayName || googleUser?.name || '',
+            photoURL: firebaseUser.photoURL || googleUser?.imageUrl || ''
+          } 
         });
         window.dispatchEvent(event);
       }
       return;
     } catch (err: any) {
       console.error('Native Google Sign-In failed:', err);
-      const isPlayServicesIssue = err?.message?.includes('SERVICE_MISSING') || err?.message?.includes('SERVICE_DISABLED') || err?.message?.includes('Google Play Services');
+      const errStr = String(err?.message || err).toLowerCase();
+      
+      const isCancelled = errStr.includes('cancel') || errStr.includes('closed') || errStr.includes('12501') || errStr.includes('popup_closed_by_user');
+      if (isCancelled) {
+        throw new Error('গুগল সাইন-ইন প্রক্রিয়াটি বাতিল করা হয়েছে।');
+      }
+
+      const isPlayServicesIssue = errStr.includes('service_missing') || errStr.includes('service_disabled') || errStr.includes('google play services');
       
       const userFriendlyMessage = isPlayServicesIssue
         ? 'আপনার ডিভাইসে Google Play Services অনুপস্থিত বা সক্রিয় নয়। দয়া করে ডিভাইসের Google Play Services আপডেট অথবা সক্রিয় করে পুনরায় চেষ্টা করুন।'
@@ -388,29 +408,36 @@ export async function initiateGoogleSignIn(options: AuthInitiationOptions): Prom
     }
   }
 
-  const profile = BrowserDetection.detect();
-  
-  if (!profile.isSupported) {
-    authDiagnostics.update({
-      errorMessage: 'গুগল সিকিউরিটি পলিসির কারণে এই ব্রাউজার থেকে সরাসরি গুগল লগইন করা সম্ভব নয়।',
-      technicalError: `disallowed_useragent: Blocked unsupported browser ${profile.browserName} v${profile.browserVersion}`,
-      suggestedFix: 'দয়া করে সাধারণ সিস্টেমে বা অন্য কোনো স্ট্যান্ডার্ড ব্রাউজার (যেমন গুগল ক্রোম) ব্যবহার করে সাইটটি ওপেন করুন।'
-    });
-    
-    if (typeof window !== 'undefined') {
-      const event = new CustomEvent('unsupported-browser-sign-in', { detail: profile });
-      window.dispatchEvent(event);
-    }
-    return;
-  }
-
   authDiagnostics.update({
-    chosenMethod: 'Redirect',
-    redirectStarted: true
+    chosenMethod: 'Popup',
+    redirectStarted: false
   });
 
-  // Trigger signInWithRedirect for web fallback
-  await signInWithRedirect(secondaryAuth, secondaryGoogleProvider);
+  try {
+    const result = await signInWithPopup(secondaryAuth, secondaryGoogleProvider);
+    const firebaseUser = result.user;
+    const emailVal = firebaseUser.email?.toLowerCase().trim() || '';
+
+    if (typeof window !== 'undefined') {
+      const event = new CustomEvent('native-google-auth-success', { 
+        detail: { 
+          user: firebaseUser, 
+          email: emailVal,
+          actionType: options.actionType,
+          displayName: firebaseUser.displayName || '',
+          photoURL: firebaseUser.photoURL || ''
+        } 
+      });
+      window.dispatchEvent(event);
+    }
+  } catch (err: any) {
+    console.error('Web Google Popup Auth error:', err);
+    const errStr = String(err?.message || err).toLowerCase();
+    if (errStr.includes('cancel') || errStr.includes('closed') || errStr.includes('popup-closed-by-user')) {
+      throw new Error('গুগল সাইন-ইন উইন্ডো বন্ধ করা হয়েছে।');
+    }
+    throw new Error(err?.message || 'গুগল দিয়ে লগইন সফল হয়নি।');
+  }
 }
 
 // Helper to log logins to the database directly

@@ -88,179 +88,74 @@ export default function App() {
     };
   }, []);
 
-  // Deep linking and Capacitor event listener setup
+  // Native Google Sign-In & Auth State Synchronizer
   useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
+    const handleNativeGoogleAuthSuccess = async (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { user, email, actionType, displayName, photoURL } = customEvent.detail || {};
+      
+      const emailVal = (email || user?.email || '').toLowerCase().trim();
+      if (!emailVal) return;
 
-    let appUrlListener: any = null;
+      console.log('Native Google Auth Success Event:', emailVal, actionType);
 
-    const setupDeepLinks = async () => {
+      // Store authenticated session locally
+      setUserEmail(emailVal);
+      localStorage.setItem('admin-email', emailVal);
+
+      // Log direct login activity
       try {
-        const { App } = await import('@capacitor/app');
-        const { Browser } = await import('@capacitor/browser');
-
-        appUrlListener = await App.addListener('appUrlOpen', async (data: any) => {
-          try {
-            console.log('App received URL scheme:', data.url);
-            
-            // Support both ssfmym://auth-callback and https://ssfmym.pro.bd/auth-callback formats
-            if (data.url.includes('auth-callback')) {
-              const parsedUrl = new URL(data.url.replace('ssfmym://', 'https://ssfmym.pro.bd/'));
-              const params = parsedUrl.searchParams;
-              const code = params.get('code');
-              const action = params.get('action') || 'portal_login';
-
-              if (code) {
-                setAuthProcessing(true);
-                toast.info('গুগল লগইন ভেরিফাই করা হচ্ছে...');
-
-                // Try to close the browser (Chrome Custom Tab)
-                try {
-                  await Browser.close();
-                } catch (browserError) {
-                  console.warn('Could not automatically close Custom Tab:', browserError);
-                }
-
-                let exchangeData: any = null;
-                try {
-                  const exchangeDocRef = doc(firestoreDb, 'authExchanges', code);
-                  const exchangeSnap = await getDoc(exchangeDocRef);
-
-                  if (!exchangeSnap.exists()) {
-                    toast.error('ভেরিফিকেশন লিংকটি সঠিক নয় বা মেয়াদোত্তীর্ণ হয়েছে।');
-                    setAuthProcessing(false);
-                    return;
-                  }
-
-                  exchangeData = exchangeSnap.data();
-
-                  // Delete the code immediately to enforce one-time usage security
-                  await deleteFirestoreDoc('authExchanges', code);
-
-                  if (exchangeData.used) {
-                    toast.error('কোডটি ইতিমধ্যে ব্যবহার করা হয়েছে।');
-                    setAuthProcessing(false);
-                    return;
-                  }
-
-                  const createdAt = new Date(exchangeData.createdAt).getTime();
-                  const now = new Date().getTime();
-                  if (now - createdAt > 120 * 1000) {
-                    toast.error('কোডের মেয়াদ শেষ হয়েছে (২ মিনিটের বেশি পার হয়েছে)।');
-                    setAuthProcessing(false);
-                    return;
-                  }
-                } catch (exchErr: any) {
-                  console.error('Exchange error:', exchErr);
-                  toast.error('ভেরিফিকেশন তথ্য সংগ্রহ করা যায়নি: ' + exchErr.message);
-                  setAuthProcessing(false);
-                  return;
-                }
-
-                const { idToken, accessToken } = exchangeData;
-
-                if (idToken) {
-                  // Create credential and sign in using Google ID Token and Access Token
-                  const credential = GoogleAuthProvider.credential(idToken, accessToken || undefined);
-                  const userCredential = await signInWithCredential(secondaryAuth, credential);
-                  const user = userCredential.user;
-
-                  // Validate the user
-                  const valReport = await validateFirebaseUser(user);
-                  if (!valReport.isValid) {
-                    toast.error(valReport.reason || 'Authentication verification failed.');
-                    setAuthProcessing(false);
-                    return;
-                  }
-
-                  const emailVal = valReport.email!.toLowerCase().trim();
-
-                  // 1. Check Super Admin
-                  if (emailVal === 'chitronbhattacharjee@gmail.com') {
-                    await handleLogin(emailVal);
-                    toast.success('সুপার এডমিন হিসেবে গুগল লগইন সফল হয়েছে!');
-                    await logMemberLoginDirect(emailVal, 'success', 'সুপার এডমিন (চিত্রণ ভট্টাচার্য) গুগল দিয়ে সরাসরি পোর্টালে প্রবেশ করেছেন।');
-                    setCurrentTab('member-portal');
-                    cleanupRedirectStorage();
-                    setAuthProcessing(false);
-                    return;
-                  }
-
-                  // Search in memberships list
-                  const memberships = db ? (db.memberships || []) : [];
-                  const foundMember = memberships.find(m => m.email?.toLowerCase().trim() === emailVal);
-
-                  if (action === 'nav_login' || action === 'portal_login') {
-                    if (!foundMember) {
-                      toast.warning('দুঃখিত, এই গুগল অ্যাকাউন্টের বিপরীতে কোনো সদস্য অ্যাকাউন্ট পাওয়া যায়নি।');
-                      
-                      // Autofill fields for the registration form
-                      const autofillData = {
-                        name: valReport.displayName || '',
-                        email: emailVal,
-                        gender: '',
-                        organization: '',
-                        unit: '',
-                        education: '',
-                        phone: '',
-                        photoUrl: valReport.photoURL || '',
-                      };
-                      localStorage.setItem('scf_pending_nav_reg_inputs', JSON.stringify(autofillData));
-                      localStorage.setItem('scf_pending_nav_verification', 'true');
-                      setCurrentTab('membership-form');
-                    } else {
-                      await handleLogin(emailVal);
-                      toast.success('সদস্য পোর্টালে গুগল লগইন সফল হয়েছে!');
-                      await logMemberLoginDirect(emailVal, 'success', 'গুগল লগইন ব্যবহার করে সদস্য পোর্টালে প্রবেশ করেছেন।');
-                      setCurrentTab('member-portal');
-                    }
-                  } else if (action === 'member_form_verify') {
-                    // If verifying on membership form, prefill the inputs
-                    const storedInputsStr = localStorage.getItem('scf_pending_form_reg_inputs');
-                    if (storedInputsStr) {
-                      try {
-                        const inputs = JSON.parse(storedInputsStr);
-                        inputs.email = emailVal;
-                        inputs.name = inputs.name || valReport.displayName || '';
-                        inputs.photoUrl = inputs.photoUrl || valReport.photoURL || '';
-                        localStorage.setItem('scf_pending_form_reg_inputs', JSON.stringify(inputs));
-                      } catch (e) {
-                        console.error(e);
-                      }
-                    }
-                    toast.success('গুগল অ্যাকাউন্ট ভেরিফিকেশন সফল হয়েছে!');
-                    const event = new CustomEvent('google-verify-success', { detail: { email: emailVal, photoUrl: valReport.photoURL } });
-                    window.dispatchEvent(event);
-                  }
-
-                  cleanupRedirectStorage();
-                  setAuthProcessing(false);
-                }
-              }
-            }
-          } catch (innerErr: any) {
-            console.error('Deep link inner parsing failed:', innerErr);
-            toast.error('ডিপ লিংক ভেরিফিকেশন ব্যর্থ হয়েছে: ' + innerErr.message);
-            setAuthProcessing(false);
-          }
-        });
-      } catch (err) {
-        console.error('Error in deep link setup:', err);
+        await logMemberLoginDirect(emailVal, 'success', `গুগল প্লে সার্ভিসেস নেটিভ সাইন-ইন সফল: ${displayName || emailVal}`);
+      } catch (logErr) {
+        console.error('Failed to log login:', logErr);
       }
+
+      // Handle registration form verification autofills if applicable
+      if (actionType === 'nav_register_verify' || actionType === 'member_form_verify') {
+        const storedInputsStr = localStorage.getItem('scf_pending_form_reg_inputs') || localStorage.getItem('scf_pending_nav_reg_inputs');
+        if (storedInputsStr) {
+          try {
+            const inputs = JSON.parse(storedInputsStr);
+            inputs.email = emailVal;
+            inputs.name = inputs.name || displayName || '';
+            inputs.photoUrl = inputs.photoUrl || photoURL || '';
+            localStorage.setItem('scf_pending_form_reg_inputs', JSON.stringify(inputs));
+          } catch (pErr) {
+            console.error(pErr);
+          }
+        }
+        const verifyEvent = new CustomEvent('google-verify-success', { 
+          detail: { email: emailVal, photoUrl: photoURL } 
+        });
+        window.dispatchEvent(verifyEvent);
+      }
+
+      // Show success feedback
+      toast.success('গুগল অ্যাকাউন্ট সাইন-ইন সফল হয়েছে!');
+
+      // Automatically navigate to Home screen
+      setCurrentTab('home');
+
+      // Refresh database in background
+      fetchDatabase(true);
     };
 
-    setupDeepLinks();
+    window.addEventListener('native-google-auth-success', handleNativeGoogleAuthSuccess);
+
+    // Listen to Firebase secondaryAuth persistent auth state changes
+    const unsubscribeAuth = secondaryAuth.onAuthStateChanged((user) => {
+      if (user && user.email) {
+        const emailVal = user.email.toLowerCase().trim();
+        setUserEmail(emailVal);
+        localStorage.setItem('admin-email', emailVal);
+      }
+    });
 
     return () => {
-      if (appUrlListener) {
-        appUrlListener.then((listener: any) => {
-          if (listener && typeof listener.remove === 'function') {
-            listener.remove();
-          }
-        }).catch(console.error);
-      }
+      window.removeEventListener('native-google-auth-success', handleNativeGoogleAuthSuccess);
+      unsubscribeAuth();
     };
-  }, [db]);
+  }, []);
 
   // Listen for unsupported browser sign-in events
   useEffect(() => {
