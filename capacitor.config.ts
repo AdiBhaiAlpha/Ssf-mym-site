@@ -4,12 +4,6 @@ const config: CapacitorConfig = {
   appId: 'app.ssf.mym',
   appName: 'সমাজতান্ত্রিক ছাত্র ফ্রন্ট',
   webDir: 'dist',
-  server: {
-    url: 'https://ssfmym.pro.bd',
-    allowNavigation: [
-      'ssfmym.pro.bd'
-    ]
-  },
   plugins: {
     SplashScreen: {
       launchShowDuration: 2000,

@@ -1337,7 +1337,7 @@ export default function App() {
                           <div className="space-y-1 text-xs">
                             <div className="flex justify-between border-b border-zinc-100 dark:border-zinc-900 pb-1">
                               <span className="text-zinc-450 font-sans">Primary Auth Strategy:</span>
-                              <span className="font-bold text-indigo-500">Redirect Method (signInWithRedirect)</span>
+                              <span className="font-bold text-indigo-500">Redirect Method (Native/Redirect)</span>
                             </div>
                             <div className="flex justify-between border-b border-zinc-100 dark:border-zinc-900 pb-1">
                               <span className="text-zinc-450 font-sans">Auth Flow Decision Mechanism:</span>

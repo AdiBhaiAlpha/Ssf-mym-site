@@ -1,43 +1,34 @@
 name: Build Android App
-
 on:
   push:
     branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master" ]
   workflow_dispatch:
-
 jobs:
   build:
     name: Build React + Capacitor Android
     runs-on: ubuntu-latest
-
     steps:
     - name: Checkout Source Code
       uses: actions/checkout@v4
-
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
         node-version: 22
         cache: 'npm'
-
     - name: Set up JDK 22
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '22'
         cache: 'gradle'
-
     - name: Install Dependencies
       run: npm ci --legacy-peer-deps
-
     - name: Build Web Application
       run: npm run build
-
     - name: Synchronize Capacitor Project
       run: npx cap sync android
-
     - name: Validate and Repair Gradle Wrapper
       run: |
         if ! jar tf android/gradle/wrapper/gradle-wrapper.jar > /dev/null 2>&1; then
@@ -47,51 +38,45 @@ jobs:
         else
           echo "SUCCESS: Gradle wrapper JAR is valid."
         fi
-
     - name: Copy Android PNG Assets
       run: python3 scripts/copy_android_assets.py
-
     - name: Make Gradle Wrapper Executable
       run: chmod +x android/gradlew
       working-directory: .
-
-    - name: Generate Debug Keystore and Display SHA-1
+    - name: Generate Debug Keystore (if missing)
       run: |
         mkdir -p ~/.android
         keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" || true
+      working-directory: .
+    - name: Generate and Display SHA-1 Footprint
+      run: |
         echo "## 🔐 Android Certificate Fingerprints" >> $GITHUB_STEP_SUMMARY
-        echo "Generating SHA-1 via keytool..."
-        keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android | grep -E "SHA1:|SHA256:" > signing_report.txt
+        echo "Generating SHA-1 via Gradle signingReport..."
+        ./gradlew signingReport > signing_report.txt
         echo "\`\`\`text" >> $GITHUB_STEP_SUMMARY
         cat signing_report.txt >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
         cat signing_report.txt
-      working-directory: .
-
+      working-directory: android
     - name: Build Android Debug APK
       run: ./gradlew assembleDebug
       working-directory: android
-
     - name: Build Android Release APK
       run: ./gradlew assembleRelease
       working-directory: android
-
     - name: Build Android Release AAB
       run: ./gradlew bundleRelease
       working-directory: android
-
     - name: Upload Debug APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: app-debug-apk
         path: android/app/build/outputs/apk/debug/*.apk
-
     - name: Upload Release APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: app-release-apk
         path: android/app/build/outputs/apk/release/*.apk
-
     - name: Upload Release AAB Artifact
       uses: actions/upload-artifact@v4
       with:

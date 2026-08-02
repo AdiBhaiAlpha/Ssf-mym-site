@@ -10,6 +10,7 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,14 +34,12 @@ class NativeGoogleAuthPlugin : Plugin() {
         val digest = md.digest(bytes)
         val hashedNonce = digest.joinToString("") { "%02x".format(it) }
 
-        val googleIdOption = GetGoogleIdOption.Builder()
-            .setFilterByAuthorizedAccounts(false)
-            .setServerClientId(clientId)
+        val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(clientId)
             .setNonce(hashedNonce)
             .build()
 
         val request = GetCredentialRequest.Builder()
-            .addCredentialOption(googleIdOption)
+            .addCredentialOption(signInWithGoogleOption)
             .build()
 
         CoroutineScope(Dispatchers.Main).launch {
