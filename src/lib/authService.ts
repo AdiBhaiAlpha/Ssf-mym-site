@@ -59,82 +59,6 @@ export function detectEnvironment(): EnvironmentInfo {
 }
 
 // ==========================================
-// ERROR DIAGNOSTICS DECOMPOSITION
-// ==========================================
-export interface AuthErrorDecomposition {
-  code: string;
-  message: string;
-  technicalReason: string;
-  suggestedFix: string;
-}
-
-export function decomposeAuthError(error: any): AuthErrorDecomposition {
-  const code = error?.code || 'auth/unknown';
-  const originalMessage = error?.message || String(error);
-  
-  let message = 'গুগল লগইন করার সময় একটি অজানা ত্রুটি ঘটেছে। অনুগ্রহ করে আবার চেষ্টা করুন।';
-  let technicalReason = originalMessage;
-  let suggestedFix = 'দয়া করে সাধারণ ক্রোম বা সাফারি ব্রাউজার ব্যবহার করে আবার চেষ্টা করুন।';
-
-  if (code.includes('disallowed_useragent') || originalMessage.includes('disallowed_useragent')) {
-    message = 'গুগল সিকিউরিটি পলিসির কারণে এই ব্রাউজার থেকে সরাসরি গুগল লগইন করা সম্ভব নয়।';
-    technicalReason = '403: disallowed_useragent. Google security restrictions block OAuth requests from embedded WebViews and in-app browsers to prevent MitM attacks.';
-    suggestedFix = 'দয়া করে স্ক্রিনের ওপরের ডানে ৩-ডট মেনু (Three-Dots) বা শেয়ার আইকন থেকে "Open in Chrome", "Open in System Browser" বা "ব্রাউজারে খুলুন" অপশনটি সিলেক্ট করে সাধারণ ব্রাউজারে সাইটটি ওপেন করুন।';
-  } else if (code === 'auth/popup-blocked') {
-    message = 'আপনার ব্রাউজারের পপ-আপ ব্লকার গুগল সাইন-ইন উইন্ডোটি খুলতে বাধা দিয়েছে।';
-    technicalReason = 'auth/popup-blocked. The browser blocked the window.open invocation because it was not triggered by a direct, trusted user interaction or popups are globally disabled.';
-    suggestedFix = 'আপনার ব্রাউজার সেটিংস থেকে পপ-আপ এবং রিডাইরেক্ট অপশনটি অন করুন, অথবা সাইটটি রিডাইরেক্ট মেথড দিয়ে স্বয়ংক্রিয়ভাবে খোলার চেষ্টা করুন।';
-  } else if (code === 'auth/popup-closed-by-user') {
-    message = 'লগইন সম্পন্ন করার আগেই আপনি গুগল সাইন-ইন উইন্ডোটি বন্ধ করে দিয়েছেন।';
-    technicalReason = 'auth/popup-closed-by-user. The user cancelled authentication by closing the popup window before completing the OAuth flow.';
-    suggestedFix = 'দয়া করে আবার লগইন বাটনে প্রেস করুন এবং গুগল প্যানেলে আপনার একাউন্টটি সিলেক্ট করার পর পপ-আপ শেষ হওয়া পর্যন্ত অপেক্ষা করুন।';
-  } else if (code === 'auth/network-request-failed') {
-    message = 'ইন্টারনেট সংযোগ বিচ্ছিন্ন বা অত্যন্ত ধীরগতির কারণে গুগল সার্ভারের সাথে যোগাযোগ করা যাচ্ছে না।';
-    technicalReason = 'auth/network-request-failed. A network communications failure occurred when contacting the Google or Firebase auth servers.';
-    suggestedFix = 'আপনার ইন্টারনেট সংযোগটি পরীক্ষা করে পুনরায় চেষ্টা করুন এবং ভিপিএন থাকলে তা বন্ধ করে দেখতে পারেন।';
-  } else if (code === 'auth/unauthorized-domain') {
-    message = 'এই ডোমেইন বা ওয়েবসাইট এড্রেসটি গুগল অথেনটিকেশন প্যানেলে অনুমোদিত নয়।';
-    technicalReason = `auth/unauthorized-domain. The current domain (${typeof window !== 'undefined' ? window.location.hostname : 'unknown'}) has not been whitelisted under Authorized Domains in the Firebase console.`;
-    suggestedFix = 'দয়া করে ময়মনসিংহ জেলা দপ্তর সেলের টেকনিক্যাল এডমিনকে এই ডোমেইনটি ফায়ারবেজ অথেনটিকেশন ডোমেইন তালিকায় অনুমোদন করতে অনুরোধ করুন।';
-  } else if (code === 'auth/invalid-api-key') {
-    message = 'ফায়ারবেজ এপিআই কি (API Key) সঠিক নয়।';
-    technicalReason = 'auth/invalid-api-key. The Firebase API key provided in the applet configuration is invalid or has expired.';
-    suggestedFix = 'প্রজেক্ট কনফিগারেশন ফাইল এবং এপিআই কি সঠিক আছে কিনা তা পুনরায় চেক করতে হবে।';
-  } else if (code === 'auth/operation-not-supported-in-this-environment') {
-    message = 'এই ব্রাউজার বা পরিবেশে এই লগইন পদ্ধতিটি সমর্থিত নয়।';
-    technicalReason = 'auth/operation-not-supported-in-this-environment. The current runtime environment does not support iframe-based OAuth operations.';
-    suggestedFix = 'দয়া করে একটি আদর্শ মোবাইল বা ডেক্সটপ ব্রাউজার (যেমন গুগল ক্রোম, সাফারি বা মজিলা ফায়ারফক্স) ব্যবহার করুন।';
-  } else if (code === 'auth/internal-error') {
-    message = 'গুগল অথেনটিকেশন সার্ভারে একটি অভ্যন্তরীণ ত্রুটি ঘটেছে।';
-    technicalReason = 'auth/internal-error. Internal processing error inside Firebase SDK or Google Identity API.';
-    suggestedFix = 'কিছুক্ষণ পর পুনরায় লগইন করার চেষ্টা করুন।';
-  } else if (code === 'auth/invalid-credential') {
-    message = 'প্রদত্ত গুগল অ্যাকাউন্ট ক্রিডেনশিয়ালটি সঠিক বা বৈধ নয়।';
-    technicalReason = 'auth/invalid-credential. The OAuth credential passed to Firebase is expired, malformed, or revoked.';
-    suggestedFix = 'দয়া করে গুগল অ্যাকাউন্ট পরিবর্তন করে বা সঠিক সচল গুগল অ্যাকাউন্ট নির্বাচন করে ট্রাই করুন।';
-  } else if (code === 'auth/timeout') {
-    message = 'লগইন প্রসেসটি সম্পন্ন হতে অতিরিক্ত সময় লাগার কারণে কানেকশন টাইমআউট হয়েছে।';
-    technicalReason = 'auth/timeout. The authentication operation timed out while waiting for a response.';
-    suggestedFix = 'আপনার নেটওয়ার্ক স্পিড চেক করে পুনরায় চেষ্টা করুন।';
-  } else if (code.includes('cancelled-popup-request') || originalMessage.includes('cancelled-popup-request')) {
-    message = 'গুগল সাইন-ইন প্রক্রিয়াটি বাতিল করা হয়েছে। দয়া করে পুনরায় চেষ্টা করুন।';
-    technicalReason = 'auth/cancelled-popup-request. The popup operation was cancelled by another conflicting request.';
-    suggestedFix = 'আবার সাইন-ইন বাটনে ক্লিক করুন।';
-  } else if (code === 'auth/redirect-cancelled-by-user') {
-    message = 'গুগল রিডাইরেক্ট প্রসেসটি বাতিল হয়ে গিয়েছে।';
-    technicalReason = 'auth/redirect-cancelled-by-user. The user navigated away or cancelled the redirect flow before completion.';
-    suggestedFix = 'পুনরায় লগইন বাটনে প্রেস করে চেষ্টা করুন।';
-  }
-
-  return {
-    code,
-    message,
-    technicalReason,
-    suggestedFix
-  };
-}
-
-// ==========================================
 // USER VALIDATION PIPELINE
 // ==========================================
 export interface ValidationReport {
@@ -195,7 +119,7 @@ export async function validateFirebaseUser(user: User | null): Promise<Validatio
 // REAL-TIME DIAGNOSTICS STORE
 // ==========================================
 export interface AuthDiagnosticsData {
-  chosenMethod: 'Popup' | 'Redirect' | 'None';
+  chosenMethod: 'Native' | 'Popup' | 'Redirect' | 'None';
   envBrowser: string;
   envOS: string;
   envIsWebView: boolean;
@@ -345,7 +269,7 @@ export async function initiateGoogleSignIn(options: AuthInitiationOptions): Prom
 
     if (Capacitor.isNativePlatform()) {
       authDiagnostics.update({
-        chosenMethod: 'Popup',
+        chosenMethod: 'Native',
         redirectStarted: false
       });
 
